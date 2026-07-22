@@ -9,38 +9,215 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedSearchesRouteImport } from './routes/_authenticated/searches'
+import { Route as AuthenticatedNumbersRouteImport } from './routes/_authenticated/numbers'
+import { Route as AuthenticatedKeysRouteImport } from './routes/_authenticated/keys'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as ApiPublicBotSettingsRouteImport } from './routes/api/public/bot/settings'
+import { Route as ApiPublicBotNumbersRouteImport } from './routes/api/public/bot/numbers'
+import { Route as ApiPublicBotLogsRouteImport } from './routes/api/public/bot/logs'
+import { Route as ApiPublicBotKeysRouteImport } from './routes/api/public/bot/keys'
+import { Route as ApiPublicBotJobsRouteImport } from './routes/api/public/bot/jobs'
+import { Route as ApiPublicBotHeartbeatRouteImport } from './routes/api/public/bot/heartbeat'
 
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSearchesRoute = AuthenticatedSearchesRouteImport.update({
+  id: '/searches',
+  path: '/searches',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedNumbersRoute = AuthenticatedNumbersRouteImport.update({
+  id: '/numbers',
+  path: '/numbers',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedKeysRoute = AuthenticatedKeysRouteImport.update({
+  id: '/keys',
+  path: '/keys',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const ApiPublicBotSettingsRoute = ApiPublicBotSettingsRouteImport.update({
+  id: '/api/public/bot/settings',
+  path: '/api/public/bot/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicBotNumbersRoute = ApiPublicBotNumbersRouteImport.update({
+  id: '/api/public/bot/numbers',
+  path: '/api/public/bot/numbers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicBotLogsRoute = ApiPublicBotLogsRouteImport.update({
+  id: '/api/public/bot/logs',
+  path: '/api/public/bot/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicBotKeysRoute = ApiPublicBotKeysRouteImport.update({
+  id: '/api/public/bot/keys',
+  path: '/api/public/bot/keys',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicBotJobsRoute = ApiPublicBotJobsRouteImport.update({
+  id: '/api/public/bot/jobs',
+  path: '/api/public/bot/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicBotHeartbeatRoute = ApiPublicBotHeartbeatRouteImport.update({
+  id: '/api/public/bot/heartbeat',
+  path: '/api/public/bot/heartbeat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/keys': typeof AuthenticatedKeysRoute
+  '/numbers': typeof AuthenticatedNumbersRoute
+  '/searches': typeof AuthenticatedSearchesRoute
+  '/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/bot/heartbeat': typeof ApiPublicBotHeartbeatRoute
+  '/api/public/bot/jobs': typeof ApiPublicBotJobsRoute
+  '/api/public/bot/keys': typeof ApiPublicBotKeysRoute
+  '/api/public/bot/logs': typeof ApiPublicBotLogsRoute
+  '/api/public/bot/numbers': typeof ApiPublicBotNumbersRoute
+  '/api/public/bot/settings': typeof ApiPublicBotSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/keys': typeof AuthenticatedKeysRoute
+  '/numbers': typeof AuthenticatedNumbersRoute
+  '/searches': typeof AuthenticatedSearchesRoute
+  '/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/bot/heartbeat': typeof ApiPublicBotHeartbeatRoute
+  '/api/public/bot/jobs': typeof ApiPublicBotJobsRoute
+  '/api/public/bot/keys': typeof ApiPublicBotKeysRoute
+  '/api/public/bot/logs': typeof ApiPublicBotLogsRoute
+  '/api/public/bot/numbers': typeof ApiPublicBotNumbersRoute
+  '/api/public/bot/settings': typeof ApiPublicBotSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/keys': typeof AuthenticatedKeysRoute
+  '/_authenticated/numbers': typeof AuthenticatedNumbersRoute
+  '/_authenticated/searches': typeof AuthenticatedSearchesRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/bot/heartbeat': typeof ApiPublicBotHeartbeatRoute
+  '/api/public/bot/jobs': typeof ApiPublicBotJobsRoute
+  '/api/public/bot/keys': typeof ApiPublicBotKeysRoute
+  '/api/public/bot/logs': typeof ApiPublicBotLogsRoute
+  '/api/public/bot/numbers': typeof ApiPublicBotNumbersRoute
+  '/api/public/bot/settings': typeof ApiPublicBotSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/keys'
+    | '/numbers'
+    | '/searches'
+    | '/settings'
+    | '/api/public/bot/heartbeat'
+    | '/api/public/bot/jobs'
+    | '/api/public/bot/keys'
+    | '/api/public/bot/logs'
+    | '/api/public/bot/numbers'
+    | '/api/public/bot/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/keys'
+    | '/numbers'
+    | '/searches'
+    | '/settings'
+    | '/api/public/bot/heartbeat'
+    | '/api/public/bot/jobs'
+    | '/api/public/bot/keys'
+    | '/api/public/bot/logs'
+    | '/api/public/bot/numbers'
+    | '/api/public/bot/settings'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/_authenticated/dashboard'
+    | '/_authenticated/keys'
+    | '/_authenticated/numbers'
+    | '/_authenticated/searches'
+    | '/_authenticated/settings'
+    | '/api/public/bot/heartbeat'
+    | '/api/public/bot/jobs'
+    | '/api/public/bot/keys'
+    | '/api/public/bot/logs'
+    | '/api/public/bot/numbers'
+    | '/api/public/bot/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
+  ApiPublicBotHeartbeatRoute: typeof ApiPublicBotHeartbeatRoute
+  ApiPublicBotJobsRoute: typeof ApiPublicBotJobsRoute
+  ApiPublicBotKeysRoute: typeof ApiPublicBotKeysRoute
+  ApiPublicBotLogsRoute: typeof ApiPublicBotLogsRoute
+  ApiPublicBotNumbersRoute: typeof ApiPublicBotNumbersRoute
+  ApiPublicBotSettingsRoute: typeof ApiPublicBotSettingsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +225,116 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/searches': {
+      id: '/_authenticated/searches'
+      path: '/searches'
+      fullPath: '/searches'
+      preLoaderRoute: typeof AuthenticatedSearchesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/numbers': {
+      id: '/_authenticated/numbers'
+      path: '/numbers'
+      fullPath: '/numbers'
+      preLoaderRoute: typeof AuthenticatedNumbersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/keys': {
+      id: '/_authenticated/keys'
+      path: '/keys'
+      fullPath: '/keys'
+      preLoaderRoute: typeof AuthenticatedKeysRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/api/public/bot/settings': {
+      id: '/api/public/bot/settings'
+      path: '/api/public/bot/settings'
+      fullPath: '/api/public/bot/settings'
+      preLoaderRoute: typeof ApiPublicBotSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/bot/numbers': {
+      id: '/api/public/bot/numbers'
+      path: '/api/public/bot/numbers'
+      fullPath: '/api/public/bot/numbers'
+      preLoaderRoute: typeof ApiPublicBotNumbersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/bot/logs': {
+      id: '/api/public/bot/logs'
+      path: '/api/public/bot/logs'
+      fullPath: '/api/public/bot/logs'
+      preLoaderRoute: typeof ApiPublicBotLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/bot/keys': {
+      id: '/api/public/bot/keys'
+      path: '/api/public/bot/keys'
+      fullPath: '/api/public/bot/keys'
+      preLoaderRoute: typeof ApiPublicBotKeysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/bot/jobs': {
+      id: '/api/public/bot/jobs'
+      path: '/api/public/bot/jobs'
+      fullPath: '/api/public/bot/jobs'
+      preLoaderRoute: typeof ApiPublicBotJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/bot/heartbeat': {
+      id: '/api/public/bot/heartbeat'
+      path: '/api/public/bot/heartbeat'
+      fullPath: '/api/public/bot/heartbeat'
+      preLoaderRoute: typeof ApiPublicBotHeartbeatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedKeysRoute: typeof AuthenticatedKeysRoute
+  AuthenticatedNumbersRoute: typeof AuthenticatedNumbersRoute
+  AuthenticatedSearchesRoute: typeof AuthenticatedSearchesRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedKeysRoute: AuthenticatedKeysRoute,
+  AuthenticatedNumbersRoute: AuthenticatedNumbersRoute,
+  AuthenticatedSearchesRoute: AuthenticatedSearchesRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
+  ApiPublicBotHeartbeatRoute: ApiPublicBotHeartbeatRoute,
+  ApiPublicBotJobsRoute: ApiPublicBotJobsRoute,
+  ApiPublicBotKeysRoute: ApiPublicBotKeysRoute,
+  ApiPublicBotLogsRoute: ApiPublicBotLogsRoute,
+  ApiPublicBotNumbersRoute: ApiPublicBotNumbersRoute,
+  ApiPublicBotSettingsRoute: ApiPublicBotSettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
