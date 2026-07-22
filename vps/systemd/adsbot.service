@@ -1,0 +1,17 @@
+[Unit]
+Description=AdsBot Telegram + Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/adsbot
+EnvironmentFile=/opt/adsbot/.env
+ExecStart=/opt/adsbot/.venv/bin/python /opt/adsbot/bot.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
