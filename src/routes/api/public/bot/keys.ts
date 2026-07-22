@@ -80,7 +80,7 @@ export const Route = createFileRoute("/api/public/bot/keys")({
           if (dailyReset) patch.daily_reset_at = today;
           if (monthlyReset) patch.monthly_reset_at = monthStart;
         }
-        const { data, error } = await supabaseAdmin.from("apify_keys").update(patch).eq("id", body.id).select().single();
+        const { data, error } = await supabaseAdmin.from("apify_keys").update(patch as any).eq("id", body.id).select().single();
         if (error) return jsonError(error.message, 500);
         return json({ key: data });
       },

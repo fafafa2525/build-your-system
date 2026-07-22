@@ -95,7 +95,7 @@ export const Route = createFileRoute("/api/public/bot/jobs")({
             patch.duration_seconds = Math.floor((Date.now() - new Date(cur.started_at).getTime()) / 1000);
           }
         }
-        const { data, error } = await supabaseAdmin.from("searches").update(patch).eq("id", body.id).select().single();
+        const { data, error } = await supabaseAdmin.from("searches").update(patch as any).eq("id", body.id).select().single();
         if (error) return jsonError(error.message, 500);
         return json({ job: data });
       },

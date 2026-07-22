@@ -16,7 +16,7 @@ export const Route = createFileRoute("/api/public/bot/heartbeat")({
             service: body.service,
             status: body.status ?? "online",
             last_heartbeat: new Date().toISOString(),
-            details: body.details ?? null,
+            details: (body.details as any) ?? null,
           },
           { onConflict: "service" }
         );

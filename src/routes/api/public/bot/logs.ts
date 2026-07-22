@@ -19,7 +19,7 @@ export const Route = createFileRoute("/api/public/bot/logs")({
           search_id: body.search_id ?? null,
           level: body.level ?? "info",
           message: body.message,
-          meta: body.meta ?? null,
+          meta: (body.meta as any) ?? null,
         });
         if (error) return jsonError(error.message, 500);
         return json({ ok: true });
