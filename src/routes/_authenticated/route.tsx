@@ -67,10 +67,8 @@ function AuthShell() {
             <Radar className="w-5 h-5 text-primary" />
             <span className="font-bold">AdsBot</span>
           </div>
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            <LogOut className="w-4 h-4" />
-          </Button>
         </div>
+
         <div className="md:hidden border-b border-border overflow-x-auto flex">
           {NAV.map((item) => {
             const active = path.startsWith(item.to);
