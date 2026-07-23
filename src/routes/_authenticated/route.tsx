@@ -1,6 +1,4 @@
-import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
+import { createFileRoute, Outlet, Link, useRouterState } from "@tanstack/react-router";
 import {
   Radar,
   LayoutDashboard,
@@ -8,18 +6,11 @@ import {
   Phone,
   KeyRound,
   Settings,
-  LogOut,
   History,
 } from "lucide-react";
-import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
-    return { user: data.user };
-  },
   component: AuthShell,
 });
 
@@ -32,15 +23,8 @@ const NAV = [
 ] as const;
 
 function AuthShell() {
-  const { user } = Route.useRouteContext();
-  const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
 
-  async function signOut() {
-    await supabase.auth.signOut();
-    toast.success("تم تسجيل الخروج");
-    navigate({ to: "/auth" });
-  }
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -74,14 +58,8 @@ function AuthShell() {
             );
           })}
         </nav>
-        <div className="p-3 border-t border-sidebar-border space-y-2">
-          <div className="text-xs text-muted-foreground truncate px-2" dir="ltr">{user.email}</div>
-          <Button variant="ghost" size="sm" className="w-full justify-start" onClick={signOut}>
-            <LogOut className="w-4 h-4 ml-2" />
-            تسجيل الخروج
-          </Button>
-        </div>
       </aside>
+
       <main className="flex-1 overflow-x-hidden">
         {/* Mobile header */}
         <div className="md:hidden sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border p-3 flex items-center justify-between">
@@ -89,10 +67,8 @@ function AuthShell() {
             <Radar className="w-5 h-5 text-primary" />
             <span className="font-bold">AdsBot</span>
           </div>
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            <LogOut className="w-4 h-4" />
-          </Button>
         </div>
+
         <div className="md:hidden border-b border-border overflow-x-auto flex">
           {NAV.map((item) => {
             const active = path.startsWith(item.to);
