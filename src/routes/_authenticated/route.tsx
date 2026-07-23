@@ -58,14 +58,8 @@ function AuthShell() {
             );
           })}
         </nav>
-        <div className="p-3 border-t border-sidebar-border space-y-2">
-          <div className="text-xs text-muted-foreground truncate px-2" dir="ltr">{user.email}</div>
-          <Button variant="ghost" size="sm" className="w-full justify-start" onClick={signOut}>
-            <LogOut className="w-4 h-4 ml-2" />
-            تسجيل الخروج
-          </Button>
-        </div>
       </aside>
+
       <main className="flex-1 overflow-x-hidden">
         {/* Mobile header */}
         <div className="md:hidden sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border p-3 flex items-center justify-between">
