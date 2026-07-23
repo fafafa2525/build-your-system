@@ -1,6 +1,4 @@
-import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
+import { createFileRoute, Outlet, Link, useRouterState } from "@tanstack/react-router";
 import {
   Radar,
   LayoutDashboard,
@@ -8,18 +6,11 @@ import {
   Phone,
   KeyRound,
   Settings,
-  LogOut,
   History,
 } from "lucide-react";
-import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
-    return { user: data.user };
-  },
   component: AuthShell,
 });
 
@@ -32,15 +23,8 @@ const NAV = [
 ] as const;
 
 function AuthShell() {
-  const { user } = Route.useRouteContext();
-  const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
 
-  async function signOut() {
-    await supabase.auth.signOut();
-    toast.success("تم تسجيل الخروج");
-    navigate({ to: "/auth" });
-  }
 
   return (
     <div className="min-h-screen bg-background flex">
