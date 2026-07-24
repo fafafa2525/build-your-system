@@ -34,6 +34,7 @@ export const Route = createFileRoute("/api/public/bot/numbers")({
         if (searchIds) q = q.in("last_search_id", searchIds);
         const { data, error } = await q;
         if (error) return jsonError(error.message, 500);
+        console.log(`[numbers GET] returning ${(data ?? []).length} items (searchIds=${searchIds?.join(",") ?? "any"})`);
         return json({ items: data ?? [] });
       },
 
