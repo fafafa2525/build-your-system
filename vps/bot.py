@@ -275,17 +275,46 @@ def extract_phones_from_text(text: str, country: str) -> list[str]:
             out.add(norm)
     return list(out)
 
-def call_actor_with_rotation(actor: str, run_input: dict, search_id: str, timeout_secs: int = 900) -> list:
-    """Run an Apify actor, rotating keys on quota/auth errors."""
+def call_actor_with_rotation(actor: str, run_input: dict, search_id: str,
+                             timeout_secs: int = 900,
+                             progress_cb=None) -> list:
+    """Run an Apify actor, rotating keys on quota/auth errors.
+    progress_cb(status, items_count) is called every few seconds while the run is live."""
     key = get_active_key()
     if not key:
         raise RuntimeError("لا توجد مفاتيح Apify نشطة. أضف مفتاحاً من /addkey أو من الواجهة.")
+    import time as _time
     for _ in range(10):
         try:
             log_job(search_id, "info", f"Apify actor: {actor} — key: {key['label']}")
             client = ApifyClient(key["api_key"])
-            run = client.actor(actor).call(run_input=run_input, timeout_secs=timeout_secs)
-            items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+            # Start async so we can poll and stream progress back to the user.
+            run = client.actor(actor).start(run_input=run_input, timeout_secs=timeout_secs)
+            run_id = run["id"]
+            dataset_id = run["defaultDatasetId"]
+            deadline = _time.time() + timeout_secs
+            last_status = ""
+            while _time.time() < deadline:
+                info = client.run(run_id).get()
+                status = info.get("status", "")
+                stats = info.get("stats") or {}
+                # cheap item count via dataset info
+                ds_info = client.dataset(dataset_id).get() or {}
+                item_count = ds_info.get("itemCount", 0)
+                if progress_cb and status != last_status:
+                    try: progress_cb(status, item_count)
+                    except Exception: pass
+                    last_status = status
+                elif progress_cb:
+                    try: progress_cb(status, item_count)
+                    except Exception: pass
+                if status in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
+                    break
+                _time.sleep(6)
+            info = client.run(run_id).get()
+            if info.get("status") != "SUCCEEDED":
+                raise RuntimeError(f"Apify run {info.get('status')}: {info.get('statusMessage','')}")
+            items = list(client.dataset(dataset_id).iterate_items())
             api("PATCH", "/api/public/bot/keys", json={"id": key["id"], "increment_usage": True})
             heartbeat("apify", "online", {"actor": actor, "items": len(items)})
             return items
@@ -303,27 +332,36 @@ def call_actor_with_rotation(actor: str, run_input: dict, search_id: str, timeou
             raise
     raise RuntimeError("فشل بعد استنفاد كل المفاتيح")
 
-def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: str) -> list[dict]:
+def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: str,
+                        progress_cb=None) -> list[dict]:
     """
-    Two-stage scrape (matches the user's proven workflow):
+    Two-stage scrape:
       1) Ads Library → collect Facebook page URLs of active ads
       2) apify/facebook-pages-scraper → phone + website per page
-    Returns list of {phone, page_url, page_name, has_store} normalized to local format.
     """
     search_url = build_facebook_ads_library_url(keyword, country)
-    log_job(search_id, "info", "المرحلة 1/2: جلب روابط الصفحات من مكتبة الإعلانات")
+    log_job(search_id, "info", f"المرحلة 1/2: فتح مكتبة الإعلانات — {search_url}")
+    if progress_cb: progress_cb("🔗 المرحلة 1/2: فتح مكتبة إعلانات فيسبوك...")
     ads_input = {
         "urls": [{"url": search_url}],
         "count": max_pages,
         "limitPerSource": max_pages,
         "scrapeAdDetails": False,
     }
-    ads = call_actor_with_rotation("curious_coder/facebook-ads-library-scraper", ads_input, search_id)
+
+    def ads_cb(status, n):
+        if progress_cb:
+            progress_cb(f"🔗 المرحلة 1/2: مكتبة الإعلانات — {status} — {n} إعلان حتى الآن")
+
+    ads = call_actor_with_rotation("curious_coder/facebook-ads-library-scraper", ads_input, search_id,
+                                   progress_cb=ads_cb)
     page_urls = extract_page_urls(ads)
     log_job(search_id, "info", f"تم استخراج {len(page_urls)} رابط صفحة فريد من {len(ads)} إعلان")
     update_job(search_id, progress=40,
                progress_message=f"جُمعت {len(page_urls)} صفحة — استخراج الأرقام...",
                pages_found=len(page_urls))
+    if progress_cb:
+        progress_cb(f"✅ المرحلة 1/2 انتهت — {len(ads)} إعلان → {len(page_urls)} صفحة فريدة\n\n📞 المرحلة 2/2: فحص الصفحات لاستخراج الأرقام...")
     if not page_urls:
         return []
 
@@ -332,14 +370,20 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
         "scrapeAbout": True,
         "maxResults": len(page_urls),
     }
-    pages = call_actor_with_rotation("apify/facebook-pages-scraper", pages_input, search_id, timeout_secs=1200)
+
+    def pages_cb(status, n):
+        if progress_cb:
+            pct = int(min(99, (n / max(1, len(page_urls))) * 100))
+            progress_cb(f"📞 المرحلة 2/2: {status} — {n}/{len(page_urls)} صفحة ({pct}%)")
+
+    pages = call_actor_with_rotation("apify/facebook-pages-scraper", pages_input, search_id,
+                                     timeout_secs=1200, progress_cb=pages_cb)
     log_job(search_id, "info", f"المرحلة 2/2: تم فحص {len(pages)} صفحة")
 
     results: dict[str, dict] = {}
     for p in pages:
         if not isinstance(p, dict):
             continue
-        # Collect every phone candidate: the `phone` field + free-text in about/info/bio.
         candidates: list[str] = []
         for field in ("phone", "phoneNumber", "phone_number"):
             v = p.get(field)
@@ -364,17 +408,17 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
             kind = classify_phone(phone, country)
             if kind == "invalid":
                 continue
-            # Keep the best classification if we already saw this number
             if phone in results:
                 continue
             results[phone] = {
                 "phone": phone,
-                "kind": kind,           # mobile | landline | tollfree | unified
+                "kind": kind,
                 "page_url": page_url,
                 "page_name": page_name,
                 "has_store": has_store,
             }
     return list(results.values())
+
 
 
 # ---------------- Worker loop ----------------
@@ -398,23 +442,49 @@ async def process_job(app: Application, job: dict) -> None:
     max_pages = job.get("max_pages") or 100
     chat_id = job.get("telegram_chat_id")
 
-    async def notify(text: str):
-        if chat_id:
-            try:
-                await app.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
-            except Exception:
-                pass
+    # A single "live progress" message we keep editing as work advances.
+    progress_msg = None
+    if chat_id:
+        try:
+            progress_msg = await app.bot.send_message(
+                chat_id=chat_id,
+                text=f"🚀 <b>بدأ البحث</b>\n🔎 {keyword} | 🌍 {country}\n⏳ التحضير...",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            pass
+
+    loop = asyncio.get_event_loop()
+    last_edit = {"text": "", "at": 0.0}
+    import time as _time
+
+    def push_progress(text: str):
+        """Thread-safe: schedules a telegram edit from the worker thread."""
+        if not progress_msg:
+            return
+        now = _time.time()
+        if text == last_edit["text"] or now - last_edit["at"] < 3:
+            return
+        last_edit["text"] = text
+        last_edit["at"] = now
+        full = (f"⚙️ <b>{keyword}</b> | 🌍 {country}\n\n{text}")
+        try:
+            asyncio.run_coroutine_threadsafe(
+                app.bot.edit_message_text(chat_id=chat_id, message_id=progress_msg.message_id,
+                                          text=full, parse_mode=ParseMode.HTML),
+                loop,
+            )
+        except Exception:
+            pass
 
     try:
         log_job(sid, "info", f"بدء البحث: '{keyword}' — {country}")
-        await notify(f"🚀 بدأ البحث عن <b>{keyword}</b> في <b>{country}</b>...")
         update_job(sid, progress=5, progress_message="جاري تشغيل Apify...")
 
-        # Run in a thread so we don't block the event loop
-        loop = asyncio.get_event_loop()
-        items = await loop.run_in_executor(None, run_facebook_scrape, keyword, country, max_pages, sid)
+        items = await loop.run_in_executor(
+            None, run_facebook_scrape, keyword, country, max_pages, sid, push_progress
+        )
 
-        # Break down by kind so the user sees WhatsApp-ready mobiles clearly.
         mobiles   = [i for i in items if i.get("kind") == "mobile"]
         landlines = [i for i in items if i.get("kind") == "landline"]
         tollfree  = [i for i in items if i.get("kind") in ("tollfree", "unified")]
@@ -423,7 +493,8 @@ async def process_job(app: Application, job: dict) -> None:
                 f"استخرج {len(items)} — 📱 جوال: {len(mobiles)} "
                 f"(بدون متجر: {len(no_store_mobiles)}) — 📞 أرضي: {len(landlines)} "
                 f"— ☎️ مجاني/موحد: {len(tollfree)}")
-        update_job(sid, progress=80, progress_message=f"رفع {len(items)} رقم...")
+        update_job(sid, progress=90, progress_message=f"رفع {len(items)} رقم...")
+        push_progress(f"💾 رفع {len(items)} رقم إلى قاعدة البيانات...")
 
         result = api("POST", "/api/public/bot/numbers",
                      json={"search_id": sid, "country": country, "items": items})
@@ -434,39 +505,53 @@ async def process_job(app: Application, job: dict) -> None:
                    numbers_found=total, numbers_new=new_count, finished=True)
         log_job(sid, "info", f"مكتمل — {total} رقم إجمالي، {new_count} جديد")
 
-        # WhatsApp file: mobiles only (landlines/toll-free are useless for WhatsApp).
-        mobile_phones = sorted({i["phone"] for i in mobiles})
+        # Build output file: phone + page URL + page name (TSV, opens as table in Excel).
+        header = "phone\tpage_url\tpage_name\thas_store\n"
+        lines = [
+            f"{i['phone']}\t{i.get('page_url') or ''}\t{(i.get('page_name') or '').replace(chr(9),' ')}\t{'1' if i.get('has_store') else '0'}"
+            for i in mobiles
+        ]
+        tsv_bytes = (header + "\n".join(lines)).encode("utf-8")
+
         if chat_id:
-            await app.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    f"✅ <b>اكتمل البحث</b>\n\n"
-                    f"🔎 الكلمة: <code>{keyword}</code>\n"
-                    f"🌍 الدولة: {country}\n"
-                    f"📄 صفحات مفحوصة: {job.get('pages_found') or '—'}\n"
-                    f"📱 جوال (واتساب): <b>{len(mobile_phones)}</b>\n"
-                    f"   ↳ بدون متجر خارجي: {len(no_store_mobiles)}\n"
-                    f"📞 أرضي: {len(landlines)}\n"
-                    f"☎️ مجاني/موحّد: {len(tollfree)}\n"
-                    f"🆕 جديد في قاعدة البيانات: <b>{new_count}</b>"
-                ),
-                parse_mode=ParseMode.HTML,
+            summary = (
+                f"✅ <b>اكتمل البحث</b>\n\n"
+                f"🔎 الكلمة: <code>{keyword}</code>\n"
+                f"🌍 الدولة: {country}\n"
+                f"📄 صفحات مفحوصة: {len(items) and (job.get('pages_found') or '—')}\n"
+                f"📱 جوال (واتساب): <b>{len(mobiles)}</b>\n"
+                f"   ↳ بدون متجر خارجي: {len(no_store_mobiles)}\n"
+                f"📞 أرضي: {len(landlines)}\n"
+                f"☎️ مجاني/موحّد: {len(tollfree)}\n"
+                f"🆕 جديد في قاعدة البيانات: <b>{new_count}</b>"
             )
-            if mobile_phones:
+            try:
+                if progress_msg:
+                    await app.bot.edit_message_text(chat_id=chat_id, message_id=progress_msg.message_id,
+                                                    text=summary, parse_mode=ParseMode.HTML)
+                else:
+                    await app.bot.send_message(chat_id=chat_id, text=summary, parse_mode=ParseMode.HTML)
+            except Exception:
+                await app.bot.send_message(chat_id=chat_id, text=summary, parse_mode=ParseMode.HTML)
+            if mobiles:
                 await app.bot.send_document(
                     chat_id=chat_id,
-                    document=io.BytesIO("\n".join(mobile_phones).encode("utf-8")),
-                    filename=f"{keyword}_{country}_mobile_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-                    caption=f"📱 {len(mobile_phones)} رقم جوال جاهز للواتساب",
+                    document=io.BytesIO(tsv_bytes),
+                    filename=f"{keyword}_{country}_{datetime.now().strftime('%Y%m%d_%H%M')}.tsv",
+                    caption=f"📱 {len(mobiles)} رقم جوال + روابط الصفحات",
                 )
-
 
     except Exception as e:
         err = str(e)
         log.exception("Job %s failed", sid)
         log_job(sid, "error", err)
         update_job(sid, status="failed", error_message=err[:500], finished=True)
-        await notify(f"❌ فشل البحث: {err[:200]}")
+        if chat_id:
+            try:
+                await app.bot.send_message(chat_id=chat_id, text=f"❌ فشل البحث: {err[:200]}")
+            except Exception:
+                pass
+
 
 # ---------------- Heartbeat loop ----------------
 
