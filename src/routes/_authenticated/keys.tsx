@@ -66,16 +66,41 @@ function KeysPage() {
     qc.invalidateQueries({ queryKey: ["apify-keys"] });
   }
 
+  async function delExhausted() {
+    const count = keys.data?.filter((k: any) => k.status === "exhausted").length ?? 0;
+    if (!count) return toast.info("لا توجد مفاتيح منتهية");
+    if (!confirm(`حذف ${count} مفتاح منتهي؟`)) return;
+    const { error } = await supabase.from("apify_keys").delete().eq("status", "exhausted");
+    if (error) return toast.error(error.message);
+    toast.success(`تم حذف ${count} مفتاح`);
+    qc.invalidateQueries({ queryKey: ["apify-keys"] });
+  }
+
+  async function reactivate(id: string) {
+    const { error } = await supabase.from("apify_keys")
+      .update({ status: "active", last_error: null }).eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("تم إعادة التفعيل");
+    qc.invalidateQueries({ queryKey: ["apify-keys"] });
+  }
+
   const active = keys.data?.filter((k: any) => k.status === "active").length ?? 0;
   const exhausted = keys.data?.filter((k: any) => k.status === "exhausted").length ?? 0;
 
   return (
     <div className="p-4 md:p-8 space-y-4 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold">مفاتيح Apify</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {active} نشط • {exhausted} منتهي • البوت ينتقل تلقائياً للمفتاح التالي عند انتهاء الحالي
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold">مفاتيح Apify</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {active} نشط • {exhausted} منتهي • البوت ينتقل تلقائياً للمفتاح التالي عند انتهاء الحالي
+          </p>
+        </div>
+        {exhausted > 0 && (
+          <Button variant="destructive" size="sm" onClick={delExhausted}>
+            <Trash2 className="w-4 h-4 ml-1" /> حذف المنتهية ({exhausted})
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -133,6 +158,11 @@ function KeysPage() {
                   <TableCell className="text-xs text-destructive max-w-[200px] truncate">{k.last_error ?? "—"}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
+                      {k.status === "exhausted" && (
+                        <Button size="sm" variant="ghost" title="إعادة تفعيل" onClick={() => reactivate(k.id)}>
+                          <Power className="w-4 h-4 text-success" />
+                        </Button>
+                      )}
                       <Button size="sm" variant="ghost" onClick={() => toggleStatus(k.id, k.status)}>
                         {k.status === "active" ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
                       </Button>
