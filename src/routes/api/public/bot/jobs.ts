@@ -17,6 +17,21 @@ export const Route = createFileRoute("/api/public/bot/jobs")({
         };
         if (!body.keyword || !body.country) return jsonError("keyword and country required");
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+        // Daily rate limit per telegram user (10/day)
+        if (body.telegram_user_id) {
+          const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const { count } = await supabaseAdmin
+            .from("searches")
+            .select("id", { count: "exact", head: true })
+            .eq("telegram_user_id", body.telegram_user_id)
+            .gte("created_at", since);
+          if ((count ?? 0) >= 10) {
+            return jsonError("daily limit reached (10 searches / 24h)", 429);
+          }
+        }
+
+
         const { data, error } = await supabaseAdmin
           .from("searches")
           .insert({
