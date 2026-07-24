@@ -1082,10 +1082,22 @@ def build_app() -> Application:
         allow_reentry=True,
     )
 
+    gmaps_conv = ConversationHandler(
+        entry_points=[CommandHandler("gmaps", gmaps_start)],
+        states={
+            GM_CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, gmaps_category)],
+            GM_CITY:     [MessageHandler(filters.TEXT & ~filters.COMMAND, gmaps_city)],
+            GM_COUNTRY:  [CallbackQueryHandler(gmaps_country, pattern=r"^gc:")],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_cmd)],
+        allow_reentry=True,
+    )
 
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(conv)
+    app.add_handler(gmaps_conv)
+
     app.add_handler(CommandHandler("addkey", addkey_cmd))
     app.add_handler(CommandHandler("keys", keys_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
