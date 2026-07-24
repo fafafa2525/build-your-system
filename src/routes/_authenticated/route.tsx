@@ -91,9 +91,15 @@ function AuthShell() {
         <div className="md:hidden sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border p-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Radar className="w-5 h-5 text-primary" />
-
             <span className="font-bold">AdsBot</span>
           </div>
+          <button
+            onClick={handleLock}
+            className="text-xs text-muted-foreground flex items-center gap-1 px-2 py-1 rounded hover:bg-accent"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            قفل
+          </button>
         </div>
 
         <div className="md:hidden border-b border-border overflow-x-auto flex">
