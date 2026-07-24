@@ -335,23 +335,47 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
     pages = call_actor_with_rotation("apify/facebook-pages-scraper", pages_input, search_id, timeout_secs=1200)
     log_job(search_id, "info", f"المرحلة 2/2: تم فحص {len(pages)} صفحة")
 
-    dial = DIAL_BY_COUNTRY.get(country)
     results: dict[str, dict] = {}
     for p in pages:
         if not isinstance(p, dict):
             continue
-        phone = normalize_local_phone(p.get("phone") or "", dial)
-        if not phone or phone in results:
-            continue
+        # Collect every phone candidate: the `phone` field + free-text in about/info/bio.
+        candidates: list[str] = []
+        for field in ("phone", "phoneNumber", "phone_number"):
+            v = p.get(field)
+            if v:
+                candidates.append(str(v))
+        for field in ("about", "info", "bio", "description", "categories", "address"):
+            v = p.get(field)
+            if isinstance(v, str) and v:
+                candidates.extend(extract_phones_from_text(v, country))
+            elif isinstance(v, list):
+                candidates.extend(extract_phones_from_text(" ".join(str(x) for x in v), country))
+
         website = p.get("website") or ""
         has_store = bool(website) and "facebook.com" not in str(website).lower()
-        results[phone] = {
-            "phone": phone,
-            "page_url": p.get("pageUrl") or p.get("url") or p.get("facebookUrl"),
-            "page_name": p.get("title") or p.get("pageName") or p.get("name"),
-            "has_store": has_store,
-        }
+        page_url = p.get("pageUrl") or p.get("url") or p.get("facebookUrl")
+        page_name = p.get("title") or p.get("pageName") or p.get("name")
+
+        for raw in candidates:
+            phone = normalize_local_phone(raw, country)
+            if not phone:
+                continue
+            kind = classify_phone(phone, country)
+            if kind == "invalid":
+                continue
+            # Keep the best classification if we already saw this number
+            if phone in results:
+                continue
+            results[phone] = {
+                "phone": phone,
+                "kind": kind,           # mobile | landline | tollfree | unified
+                "page_url": page_url,
+                "page_name": page_name,
+                "has_store": has_store,
+            }
     return list(results.values())
+
 
 # ---------------- Worker loop ----------------
 
