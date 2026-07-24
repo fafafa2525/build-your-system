@@ -17,6 +17,7 @@ import { Route as AuthenticatedSearchesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedNumbersRouteImport } from './routes/_authenticated/numbers'
 import { Route as AuthenticatedKeysRouteImport } from './routes/_authenticated/keys'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as ApiPublicBotValidationsRouteImport } from './routes/api/public/bot/validations'
 import { Route as ApiPublicBotSettingsRouteImport } from './routes/api/public/bot/settings'
 import { Route as ApiPublicBotNumbersRouteImport } from './routes/api/public/bot/numbers'
 import { Route as ApiPublicBotLogsRouteImport } from './routes/api/public/bot/logs'
@@ -63,6 +64,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiPublicBotValidationsRoute = ApiPublicBotValidationsRouteImport.update({
+  id: '/api/public/bot/validations',
+  path: '/api/public/bot/validations',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicBotSettingsRoute = ApiPublicBotSettingsRouteImport.update({
   id: '/api/public/bot/settings',
   path: '/api/public/bot/settings',
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/api/public/bot/logs': typeof ApiPublicBotLogsRoute
   '/api/public/bot/numbers': typeof ApiPublicBotNumbersRoute
   '/api/public/bot/settings': typeof ApiPublicBotSettingsRoute
+  '/api/public/bot/validations': typeof ApiPublicBotValidationsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -123,6 +130,7 @@ export interface FileRoutesByTo {
   '/api/public/bot/logs': typeof ApiPublicBotLogsRoute
   '/api/public/bot/numbers': typeof ApiPublicBotNumbersRoute
   '/api/public/bot/settings': typeof ApiPublicBotSettingsRoute
+  '/api/public/bot/validations': typeof ApiPublicBotValidationsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -140,6 +148,7 @@ export interface FileRoutesById {
   '/api/public/bot/logs': typeof ApiPublicBotLogsRoute
   '/api/public/bot/numbers': typeof ApiPublicBotNumbersRoute
   '/api/public/bot/settings': typeof ApiPublicBotSettingsRoute
+  '/api/public/bot/validations': typeof ApiPublicBotValidationsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
     | '/api/public/bot/logs'
     | '/api/public/bot/numbers'
     | '/api/public/bot/settings'
+    | '/api/public/bot/validations'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
     | '/api/public/bot/logs'
     | '/api/public/bot/numbers'
     | '/api/public/bot/settings'
+    | '/api/public/bot/validations'
   id:
     | '__root__'
     | '/'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/api/public/bot/logs'
     | '/api/public/bot/numbers'
     | '/api/public/bot/settings'
+    | '/api/public/bot/validations'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -200,6 +212,7 @@ export interface RootRouteChildren {
   ApiPublicBotLogsRoute: typeof ApiPublicBotLogsRoute
   ApiPublicBotNumbersRoute: typeof ApiPublicBotNumbersRoute
   ApiPublicBotSettingsRoute: typeof ApiPublicBotSettingsRoute
+  ApiPublicBotValidationsRoute: typeof ApiPublicBotValidationsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -259,6 +272,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/api/public/bot/validations': {
+      id: '/api/public/bot/validations'
+      path: '/api/public/bot/validations'
+      fullPath: '/api/public/bot/validations'
+      preLoaderRoute: typeof ApiPublicBotValidationsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/public/bot/settings': {
       id: '/api/public/bot/settings'
@@ -334,6 +354,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicBotLogsRoute: ApiPublicBotLogsRoute,
   ApiPublicBotNumbersRoute: ApiPublicBotNumbersRoute,
   ApiPublicBotSettingsRoute: ApiPublicBotSettingsRoute,
+  ApiPublicBotValidationsRoute: ApiPublicBotValidationsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

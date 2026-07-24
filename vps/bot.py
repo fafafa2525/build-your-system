@@ -674,6 +674,186 @@ async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         return
     await update.message.reply_text("افتح لوحة التحكم على الويب لعرض الإحصائيات الكاملة.")
 
+# ---------------- Contact Validation Engine (WhatsApp validator) ----------------
+
+WHATSAPP_ACTOR = os.getenv("APIFY_WHATSAPP_ACTOR", "maxcopell/whatsapp-checker")
+VALIDATION_TTL_DAYS = int(os.getenv("VALIDATION_TTL_DAYS", "30"))
+
+def to_e164(local: str, country: str) -> Optional[str]:
+    """Best-effort E.164 conversion using country dial codes we already know."""
+    dial = {
+        "DZ": "213", "MA": "212", "TN": "216", "EG": "20", "SA": "966", "AE": "971",
+        "KW": "965", "QA": "974", "JO": "962", "IQ": "964", "LY": "218", "FR": "33",
+    }.get(country.upper())
+    if not dial or not local:
+        return None
+    s = re.sub(r"\D", "", local)
+    if not s:
+        return None
+    if s.startswith("00"):
+        s = s[2:]
+    if s.startswith(dial):
+        return "+" + s
+    # strip leading 0 for national numbers
+    s = s.lstrip("0")
+    return "+" + dial + s
+
+def validate_whatsapp_batch(numbers_e164: list[str], search_id: Optional[str] = None) -> dict[str, dict]:
+    """
+    Returns { e164: { status: valid|invalid|error, result: {...}, cached: bool } }.
+    1) Ask API for cached results (< 30 days).
+    2) Only run the Apify actor for missing numbers.
+    3) Upload results back to cache them.
+    """
+    if not numbers_e164:
+        return {}
+    out: dict[str, dict] = {}
+    # 1. Cache lookup
+    try:
+        resp = api("GET", "/api/public/bot/validations",
+                   params={"validator": "whatsapp", "contact_type": "phone",
+                           "values": ",".join(numbers_e164)})
+        cached = resp.get("cached") or {}
+        missing = resp.get("missing") or numbers_e164
+        for v, row in cached.items():
+            out[v] = {"status": row.get("status"), "result": row.get("result") or {}, "cached": True}
+    except Exception as e:
+        log.warning("validation cache lookup failed: %s", e)
+        missing = numbers_e164
+
+    if not missing:
+        return out
+
+    # 2. Run Apify actor for missing
+    try:
+        items = call_actor_with_rotation(
+            WHATSAPP_ACTOR,
+            {"phoneNumbers": missing},
+            search_id or "validate",
+            timeout_secs=600,
+        )
+    except Exception as e:
+        # Mark all missing as error so we don't retry immediately
+        err_msg = str(e)[:300]
+        for v in missing:
+            out[v] = {"status": "error", "result": {}, "cached": False, "error": err_msg}
+        return out
+
+    # 3. Normalize actor output — accept a few common shapes
+    def _key(item):
+        for k in ("phoneNumber", "phone", "number", "input"):
+            if item.get(k):
+                return re.sub(r"\D", "", str(item[k]))
+        return None
+    def _valid(item):
+        for k in ("isRegistered", "onWhatsApp", "on_whatsapp", "exists", "isValid", "valid"):
+            if k in item:
+                return bool(item[k])
+        return None
+
+    result_map: dict[str, dict] = {}
+    for it in items or []:
+        digits = _key(it)
+        if not digits:
+            continue
+        result_map["+" + digits] = it
+
+    upload_items = []
+    for v in missing:
+        raw = result_map.get(v)
+        if raw is None:
+            out[v] = {"status": "invalid", "result": {}, "cached": False}
+            upload_items.append({"contact_value": v, "status": "invalid", "result": {},
+                                 "source_search_id": search_id})
+            continue
+        is_valid = _valid(raw)
+        status = "valid" if is_valid else ("invalid" if is_valid is False else "error")
+        out[v] = {"status": status, "result": raw, "cached": False}
+        upload_items.append({"contact_value": v, "status": status, "result": raw,
+                             "source_search_id": search_id})
+
+    try:
+        api("POST", "/api/public/bot/validations",
+            json={"validator": "whatsapp", "contact_type": "phone",
+                  "ttl_days": VALIDATION_TTL_DAYS, "items": upload_items})
+    except Exception as e:
+        log.warning("validation upload failed: %s", e)
+    return out
+
+async def validate_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """/validate — validate the phone numbers from the caller's most recent completed search."""
+    if not await is_allowed(update.effective_user.id):
+        await update.message.reply_text("❌ غير مصرح لك.")
+        return
+    uid = update.effective_user.id
+    try:
+        # Reuse the numbers endpoint to fetch the caller's last search numbers
+        resp = api("GET", "/api/public/bot/numbers",
+                   params={"telegram_user_id": uid, "limit": 500})
+    except Exception:
+        resp = {}
+    items = resp.get("items") or []
+    if not items:
+        await update.message.reply_text(
+            "لم أجد أرقاماً حديثة. شغّل /search أولاً ثم استخدم /validate."
+        )
+        return
+
+    status_msg = await update.message.reply_text(
+        f"🔎 جاري التحقق من {len(items)} رقم عبر واتساب…"
+    )
+
+    # Build (e164, original) pairs
+    pairs = []
+    for it in items:
+        e164 = to_e164(it.get("phone", ""), it.get("country") or "")
+        if e164:
+            pairs.append((e164, it))
+    if not pairs:
+        await status_msg.edit_text("لا يمكن تحويل الأرقام لصيغة دولية.")
+        return
+
+    # Run in batches of 100 to keep actor runs short
+    results: dict[str, dict] = {}
+    batch = 100
+    for i in range(0, len(pairs), batch):
+        chunk = [p[0] for p in pairs[i:i+batch]]
+        r = await asyncio.to_thread(validate_whatsapp_batch, chunk, None)
+        results.update(r)
+        cached_n = sum(1 for v in results.values() if v.get("cached"))
+        valid_n = sum(1 for v in results.values() if v.get("status") == "valid")
+        try:
+            await status_msg.edit_text(
+                f"🔎 التحقق: {len(results)}/{len(pairs)} — ✅ {valid_n} صالح — 💾 {cached_n} من الكاش"
+            )
+        except Exception:
+            pass
+
+    valid_pairs = [(e, it) for (e, it) in pairs
+                   if results.get(e, {}).get("status") == "valid"]
+    invalid_n = sum(1 for v in results.values() if v.get("status") == "invalid")
+    err_n = sum(1 for v in results.values() if v.get("status") == "error")
+
+    if not valid_pairs:
+        await status_msg.edit_text(
+            f"انتهى التحقق: 0 صالح / {invalid_n} غير مسجّل / {err_n} خطأ."
+        )
+        return
+
+    # Build TSV of valid-only
+    header = "phone\te164\tpage_url\tpage_name\n"
+    lines = [header]
+    for e164, it in valid_pairs:
+        lines.append(f"{it.get('phone','')}\t{e164}\t{it.get('page_url','')}\t{it.get('page_name','')}\n")
+    buf = io.BytesIO("".join(lines).encode("utf-8"))
+    buf.name = f"whatsapp_valid_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.tsv"
+
+    await status_msg.edit_text(
+        f"✅ {len(valid_pairs)} رقم واتساب مؤكّد / {invalid_n} غير مسجّل / {err_n} خطأ."
+    )
+    await update.message.reply_document(document=buf, filename=buf.name)
+
+
 # ---------------- Main ----------------
 
 async def post_init(app: Application) -> None:
@@ -703,6 +883,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("addkey", addkey_cmd))
     app.add_handler(CommandHandler("keys", keys_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
+    app.add_handler(CommandHandler("validate", validate_cmd))
     return app
 
 def main() -> None:
