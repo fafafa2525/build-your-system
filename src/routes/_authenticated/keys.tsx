@@ -89,11 +89,18 @@ function KeysPage() {
 
   return (
     <div className="p-4 md:p-8 space-y-4 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold">مفاتيح Apify</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {active} نشط • {exhausted} منتهي • البوت ينتقل تلقائياً للمفتاح التالي عند انتهاء الحالي
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold">مفاتيح Apify</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {active} نشط • {exhausted} منتهي • البوت ينتقل تلقائياً للمفتاح التالي عند انتهاء الحالي
+          </p>
+        </div>
+        {exhausted > 0 && (
+          <Button variant="destructive" size="sm" onClick={delExhausted}>
+            <Trash2 className="w-4 h-4 ml-1" /> حذف المنتهية ({exhausted})
+          </Button>
+        )}
       </div>
 
       <Card>
