@@ -353,7 +353,7 @@ async def process_job(app: Application, job: dict) -> None:
                     f"✅ <b>اكتمل البحث</b>\n\n"
                     f"🔎 الكلمة: <code>{keyword}</code>\n"
                     f"🌍 الدولة: {country}\n"
-                    f"📄 صفحات: {len(items)}\n"
+                    f"📄 صفحات مؤهلة: {len(qualified)}\n"
                     f"📞 أرقام جديدة: <b>{new_count}</b> / {total}"
                 ),
                 parse_mode=ParseMode.HTML,
