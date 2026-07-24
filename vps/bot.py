@@ -529,6 +529,14 @@ async def process_job(app: Application, job: dict) -> None:
     country = job["country"]
     max_pages = job.get("max_pages") or 100
     chat_id = job.get("telegram_chat_id")
+    provider = (job.get("provider") or "facebook").lower()
+    city = job.get("city") or ""
+    category = job.get("category") or keyword
+
+    header_icon = "🗺️" if provider == "gmaps" else "🔎"
+    header_text = f"{header_icon} {category or keyword}"
+    if provider == "gmaps" and city:
+        header_text += f" — {city}"
 
     # A single "live progress" message we keep editing as work advances.
     progress_msg = None
@@ -536,7 +544,7 @@ async def process_job(app: Application, job: dict) -> None:
         try:
             progress_msg = await app.bot.send_message(
                 chat_id=chat_id,
-                text=f"🚀 <b>بدأ البحث</b>\n🔎 {keyword} | 🌍 {country}\n⏳ التحضير...",
+                text=f"🚀 <b>بدأ البحث</b>\n{header_text} | 🌍 {country}\n⏳ التحضير...",
                 parse_mode=ParseMode.HTML,
             )
         except Exception:
@@ -555,7 +563,7 @@ async def process_job(app: Application, job: dict) -> None:
             return
         last_edit["text"] = text
         last_edit["at"] = now
-        full = (f"⚙️ <b>{keyword}</b> | 🌍 {country}\n\n{text}")
+        full = (f"⚙️ <b>{header_text}</b> | 🌍 {country}\n\n{text}")
         try:
             asyncio.run_coroutine_threadsafe(
                 app.bot.edit_message_text(chat_id=chat_id, message_id=progress_msg.message_id,
@@ -566,28 +574,35 @@ async def process_job(app: Application, job: dict) -> None:
             pass
 
     try:
-        log_job(sid, "info", f"بدء البحث: '{keyword}' — {country}")
-        update_job(sid, progress=5, progress_message="جاري تشغيل Apify...")
+        log_job(sid, "info", f"[{provider}] بدء المهمة: '{keyword}' — {country}")
+        update_job(sid, progress=5, progress_message=f"جاري تشغيل {provider}...")
 
-        items = await loop.run_in_executor(
-            None, run_facebook_scrape, keyword, country, max_pages, sid, push_progress
-        )
+        if provider == "gmaps":
+            items = await loop.run_in_executor(
+                None, run_gmaps_scrape, category, city, country, max_pages, sid, push_progress
+            )
+        else:
+            items = await loop.run_in_executor(
+                None, run_facebook_scrape, keyword, country, max_pages, sid, push_progress
+            )
 
         mobiles   = [i for i in items if i.get("kind") == "mobile"]
         landlines = [i for i in items if i.get("kind") == "landline"]
         tollfree  = [i for i in items if i.get("kind") in ("tollfree", "unified")]
-        no_store_mobiles = [i for i in mobiles if not i.get("has_store")]
+        no_store_mobiles = [i for i in mobiles if not i.get("has_store") and not i.get("website")]
         log_job(sid, "info",
                 f"استخرج {len(items)} — 📱 جوال: {len(mobiles)} "
-                f"(بدون متجر: {len(no_store_mobiles)}) — 📞 أرضي: {len(landlines)} "
+                f"— 📞 أرضي: {len(landlines)} "
                 f"— ☎️ مجاني/موحد: {len(tollfree)}")
         update_job(sid, progress=90, progress_message=f"رفع {len(items)} رقم...")
         push_progress(f"💾 رفع {len(items)} رقم إلى قاعدة البيانات...")
 
         result = api("POST", "/api/public/bot/numbers",
-                     json={"search_id": sid, "country": country, "items": items})
+                     json={"search_id": sid, "country": country,
+                           "source": provider, "items": items})
         new_count = result.get("new_count", 0)
         total = result.get("total", 0)
+
 
         update_job(sid, status="completed", progress=100, progress_message="مكتمل",
                    numbers_found=total, numbers_new=new_count, finished=True)
