@@ -159,64 +159,94 @@ export type Database = {
       }
       extracted_numbers: {
         Row: {
+          address: string | null
+          business_name: string | null
+          category: string | null
+          city: string | null
           country: string | null
           created_at: string
           email: string | null
           first_search_id: string | null
           first_seen_at: string
+          google_maps_url: string | null
           has_website: boolean
           id: string
           is_sent: boolean
           kind: string | null
           last_search_id: string | null
           last_seen_at: string
+          latitude: number | null
+          longitude: number | null
           notes: string | null
           page_name: string | null
           page_url: string | null
           phone: string
+          rating: number | null
+          reviews_count: number | null
           sent_at: string | null
+          sources: string[]
           times_found: number
           updated_at: string
           website: string | null
         }
         Insert: {
+          address?: string | null
+          business_name?: string | null
+          category?: string | null
+          city?: string | null
           country?: string | null
           created_at?: string
           email?: string | null
           first_search_id?: string | null
           first_seen_at?: string
+          google_maps_url?: string | null
           has_website?: boolean
           id?: string
           is_sent?: boolean
           kind?: string | null
           last_search_id?: string | null
           last_seen_at?: string
+          latitude?: number | null
+          longitude?: number | null
           notes?: string | null
           page_name?: string | null
           page_url?: string | null
           phone: string
+          rating?: number | null
+          reviews_count?: number | null
           sent_at?: string | null
+          sources?: string[]
           times_found?: number
           updated_at?: string
           website?: string | null
         }
         Update: {
+          address?: string | null
+          business_name?: string | null
+          category?: string | null
+          city?: string | null
           country?: string | null
           created_at?: string
           email?: string | null
           first_search_id?: string | null
           first_seen_at?: string
+          google_maps_url?: string | null
           has_website?: boolean
           id?: string
           is_sent?: boolean
           kind?: string | null
           last_search_id?: string | null
           last_seen_at?: string
+          latitude?: number | null
+          longitude?: number | null
           notes?: string | null
           page_name?: string | null
           page_url?: string | null
           phone?: string
+          rating?: number | null
+          reviews_count?: number | null
           sent_at?: string | null
+          sources?: string[]
           times_found?: number
           updated_at?: string
           website?: string | null
@@ -399,6 +429,8 @@ export type Database = {
         Row: {
           ad_type: string | null
           apify_run_id: string | null
+          category: string | null
+          city: string | null
           country: string
           created_at: string
           duration_seconds: number | null
@@ -413,6 +445,7 @@ export type Database = {
           pages_found: number
           progress: number
           progress_message: string | null
+          provider: string
           source: string
           started_at: string | null
           status: Database["public"]["Enums"]["search_status"]
@@ -424,6 +457,8 @@ export type Database = {
         Insert: {
           ad_type?: string | null
           apify_run_id?: string | null
+          category?: string | null
+          city?: string | null
           country: string
           created_at?: string
           duration_seconds?: number | null
@@ -438,6 +473,7 @@ export type Database = {
           pages_found?: number
           progress?: number
           progress_message?: string | null
+          provider?: string
           source?: string
           started_at?: string | null
           status?: Database["public"]["Enums"]["search_status"]
@@ -449,6 +485,8 @@ export type Database = {
         Update: {
           ad_type?: string | null
           apify_run_id?: string | null
+          category?: string | null
+          city?: string | null
           country?: string
           created_at?: string
           duration_seconds?: number | null
@@ -463,6 +501,7 @@ export type Database = {
           pages_found?: number
           progress?: number
           progress_message?: string | null
+          provider?: string
           source?: string
           started_at?: string | null
           status?: Database["public"]["Enums"]["search_status"]

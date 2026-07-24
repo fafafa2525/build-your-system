@@ -50,8 +50,11 @@ logging.basicConfig(
 )
 log = logging.getLogger("adsbot")
 
-# Conversation states
+# Conversation states — Facebook flow
 CHOOSE_KEYWORD, CHOOSE_COUNTRY = range(2)
+# Conversation states — Google Maps flow
+GM_CATEGORY, GM_CITY, GM_COUNTRY = range(10, 13)
+
 
 COUNTRIES = [
     ("DZ", "🇩🇿 الجزائر"), ("MA", "🇲🇦 المغرب"), ("TN", "🇹🇳 تونس"),
@@ -419,6 +422,91 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
             }
     return list(results.values())
 
+# ---------------- Google Maps provider ----------------
+
+GMAPS_ACTOR = os.getenv("APIFY_GMAPS_ACTOR", "compass/crawler-google-places")
+
+def run_gmaps_scrape(category: str, city: str, country: str, max_results: int,
+                     search_id: str, progress_cb=None) -> list[dict]:
+    """
+    Scrape Google Maps for a category in a city/country.
+    Uses compass/crawler-google-places; rotates Apify keys via call_actor_with_rotation.
+    Returns items shaped for POST /api/public/bot/numbers.
+    """
+    query = f"{category} in {city}, {country}" if city else f"{category} in {country}"
+    if progress_cb:
+        progress_cb(f"🗺️ Google Maps — البحث عن: {query}")
+    log_job(search_id, "info", f"Google Maps: {query} (max={max_results})")
+
+    run_input = {
+        "searchStringsArray": [query],
+        "maxCrawledPlacesPerSearch": max_results,
+        "language": "ar",
+        "skipClosedPlaces": True,
+        "scrapeContacts": True,
+    }
+
+    def cb(status, n):
+        if progress_cb:
+            pct = int(min(99, (n / max(1, max_results)) * 100))
+            progress_cb(f"🗺️ Google Maps — {status} — {n} نتيجة ({pct}%)")
+
+    places = call_actor_with_rotation(GMAPS_ACTOR, run_input, search_id,
+                                       timeout_secs=1200, progress_cb=cb)
+    log_job(search_id, "info", f"Google Maps: تم استخراج {len(places)} نشاط")
+
+    results: dict[str, dict] = {}
+    for p in places:
+        if not isinstance(p, dict):
+            continue
+        # Collect phone candidates
+        candidates: list[str] = []
+        for field in ("phone", "phoneNumber", "phoneUnformatted"):
+            v = p.get(field)
+            if v: candidates.append(str(v))
+        for extra in (p.get("additionalInfo") or {}).get("Phone", []) or []:
+            if isinstance(extra, dict):
+                for v in extra.values():
+                    if v: candidates.append(str(v))
+
+        biz_name = p.get("title") or p.get("name")
+        category_name = p.get("categoryName") or (p.get("categories") or [None])[0]
+        addr = p.get("address")
+        loc_city = p.get("city") or city
+        rating = p.get("totalScore") or p.get("rating")
+        reviews = p.get("reviewsCount") or p.get("reviewCount")
+        lat = (p.get("location") or {}).get("lat") if isinstance(p.get("location"), dict) else p.get("latitude")
+        lng = (p.get("location") or {}).get("lng") if isinstance(p.get("location"), dict) else p.get("longitude")
+        website = p.get("website") or p.get("webUrl")
+        gmaps_url = p.get("url") or p.get("googleMapsUrl")
+
+        for raw in candidates:
+            phone = normalize_local_phone(raw, country)
+            if not phone:
+                continue
+            kind = classify_phone(phone, country)
+            if kind == "invalid":
+                continue
+            if phone in results:
+                continue
+            results[phone] = {
+                "phone": phone,
+                "kind": kind,
+                "business_name": biz_name,
+                "category": category_name,
+                "address": addr,
+                "city": loc_city,
+                "rating": rating,
+                "reviews_count": reviews,
+                "latitude": lat,
+                "longitude": lng,
+                "google_maps_url": gmaps_url,
+                "website": website,
+                "page_name": biz_name,
+            }
+    return list(results.values())
+
+
 
 
 # ---------------- Worker loop ----------------
@@ -441,6 +529,14 @@ async def process_job(app: Application, job: dict) -> None:
     country = job["country"]
     max_pages = job.get("max_pages") or 100
     chat_id = job.get("telegram_chat_id")
+    provider = (job.get("provider") or "facebook").lower()
+    city = job.get("city") or ""
+    category = job.get("category") or keyword
+
+    header_icon = "🗺️" if provider == "gmaps" else "🔎"
+    header_text = f"{header_icon} {category or keyword}"
+    if provider == "gmaps" and city:
+        header_text += f" — {city}"
 
     # A single "live progress" message we keep editing as work advances.
     progress_msg = None
@@ -448,7 +544,7 @@ async def process_job(app: Application, job: dict) -> None:
         try:
             progress_msg = await app.bot.send_message(
                 chat_id=chat_id,
-                text=f"🚀 <b>بدأ البحث</b>\n🔎 {keyword} | 🌍 {country}\n⏳ التحضير...",
+                text=f"🚀 <b>بدأ البحث</b>\n{header_text} | 🌍 {country}\n⏳ التحضير...",
                 parse_mode=ParseMode.HTML,
             )
         except Exception:
@@ -467,7 +563,7 @@ async def process_job(app: Application, job: dict) -> None:
             return
         last_edit["text"] = text
         last_edit["at"] = now
-        full = (f"⚙️ <b>{keyword}</b> | 🌍 {country}\n\n{text}")
+        full = (f"⚙️ <b>{header_text}</b> | 🌍 {country}\n\n{text}")
         try:
             asyncio.run_coroutine_threadsafe(
                 app.bot.edit_message_text(chat_id=chat_id, message_id=progress_msg.message_id,
@@ -478,28 +574,35 @@ async def process_job(app: Application, job: dict) -> None:
             pass
 
     try:
-        log_job(sid, "info", f"بدء البحث: '{keyword}' — {country}")
-        update_job(sid, progress=5, progress_message="جاري تشغيل Apify...")
+        log_job(sid, "info", f"[{provider}] بدء المهمة: '{keyword}' — {country}")
+        update_job(sid, progress=5, progress_message=f"جاري تشغيل {provider}...")
 
-        items = await loop.run_in_executor(
-            None, run_facebook_scrape, keyword, country, max_pages, sid, push_progress
-        )
+        if provider == "gmaps":
+            items = await loop.run_in_executor(
+                None, run_gmaps_scrape, category, city, country, max_pages, sid, push_progress
+            )
+        else:
+            items = await loop.run_in_executor(
+                None, run_facebook_scrape, keyword, country, max_pages, sid, push_progress
+            )
 
         mobiles   = [i for i in items if i.get("kind") == "mobile"]
         landlines = [i for i in items if i.get("kind") == "landline"]
         tollfree  = [i for i in items if i.get("kind") in ("tollfree", "unified")]
-        no_store_mobiles = [i for i in mobiles if not i.get("has_store")]
+        no_store_mobiles = [i for i in mobiles if not i.get("has_store") and not i.get("website")]
         log_job(sid, "info",
                 f"استخرج {len(items)} — 📱 جوال: {len(mobiles)} "
-                f"(بدون متجر: {len(no_store_mobiles)}) — 📞 أرضي: {len(landlines)} "
+                f"— 📞 أرضي: {len(landlines)} "
                 f"— ☎️ مجاني/موحد: {len(tollfree)}")
         update_job(sid, progress=90, progress_message=f"رفع {len(items)} رقم...")
         push_progress(f"💾 رفع {len(items)} رقم إلى قاعدة البيانات...")
 
         result = api("POST", "/api/public/bot/numbers",
-                     json={"search_id": sid, "country": country, "items": items})
+                     json={"search_id": sid, "country": country,
+                           "source": provider, "items": items})
         new_count = result.get("new_count", 0)
         total = result.get("total", 0)
+
 
         update_job(sid, status="completed", progress=100, progress_message="مكتمل",
                    numbers_found=total, numbers_new=new_count, finished=True)
@@ -577,7 +680,10 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "👋 <b>مرحباً في AdsBot</b>\n\n"
         "الأوامر المتاحة:\n"
-        "🔍 /search — بحث جديد في مكتبة إعلانات فيسبوك\n"
+        "🔍 /search — بحث في مكتبة إعلانات فيسبوك\n"
+        "🗺️ /gmaps — بحث في Google Maps (نشاط + مدينة)\n"
+        "✅ /validate — فحص أرقام آخر بحث عبر واتساب\n"
+
         "🔑 /addkey — إضافة مفتاح Apify\n"
         "📊 /keys — عرض حالة المفاتيح\n"
         "📈 /stats — إحصائيات\n"
@@ -633,6 +739,61 @@ async def search_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 async def cancel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("تم الإلغاء")
     return ConversationHandler.END
+
+# /gmaps flow — Google Maps source
+async def gmaps_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await is_allowed(update.effective_user.id):
+        await update.message.reply_text("❌ غير مصرح لك.")
+        return ConversationHandler.END
+    await update.message.reply_text(
+        "🗺️ <b>بحث Google Maps</b>\n\nأرسل <b>نوع النشاط</b> (مثال: مطاعم، صيدلية، عسل):",
+        parse_mode=ParseMode.HTML,
+    )
+    return GM_CATEGORY
+
+async def gmaps_category(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    ctx.user_data["gm_category"] = update.message.text.strip()
+    await update.message.reply_text("🏙️ أرسل اسم <b>المدينة</b>:", parse_mode=ParseMode.HTML)
+    return GM_CITY
+
+async def gmaps_city(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    ctx.user_data["gm_city"] = update.message.text.strip()
+    kb = [
+        [InlineKeyboardButton(name, callback_data=f"gc:{code}") for code, name in COUNTRIES[i:i+3]]
+        for i in range(0, len(COUNTRIES), 3)
+    ]
+    await update.message.reply_text("🌍 اختر الدولة:", reply_markup=InlineKeyboardMarkup(kb))
+    return GM_COUNTRY
+
+async def gmaps_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    q = update.callback_query
+    await q.answer()
+    country = q.data.split(":")[1]
+    category = ctx.user_data.get("gm_category")
+    city = ctx.user_data.get("gm_city")
+    if not category or not city:
+        await q.edit_message_text("❌ خطأ — ابدأ من جديد بـ /gmaps")
+        return ConversationHandler.END
+    resp = api("POST", "/api/public/bot/jobs", json={
+        "keyword": category,
+        "country": country,
+        "provider": "gmaps",
+        "city": city,
+        "category": category,
+        "telegram_chat_id": q.message.chat.id,
+        "telegram_user_id": q.from_user.id,
+    })
+    _ = resp.get("job", {})
+    await q.edit_message_text(
+        f"✅ تم إنشاء مهمة Google Maps\n\n"
+        f"🏷️ <b>{category}</b>\n"
+        f"🏙️ {city} — 🌍 {country}\n\n"
+        f"سأرسل النتائج فور اكتمال البحث...",
+        parse_mode=ParseMode.HTML,
+    )
+    return ConversationHandler.END
+
+
 
 # /addkey
 async def addkey_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -924,10 +1085,22 @@ def build_app() -> Application:
         allow_reentry=True,
     )
 
+    gmaps_conv = ConversationHandler(
+        entry_points=[CommandHandler("gmaps", gmaps_start)],
+        states={
+            GM_CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, gmaps_category)],
+            GM_CITY:     [MessageHandler(filters.TEXT & ~filters.COMMAND, gmaps_city)],
+            GM_COUNTRY:  [CallbackQueryHandler(gmaps_country, pattern=r"^gc:")],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_cmd)],
+        allow_reentry=True,
+    )
 
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(conv)
+    app.add_handler(gmaps_conv)
+
     app.add_handler(CommandHandler("addkey", addkey_cmd))
     app.add_handler(CommandHandler("keys", keys_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
