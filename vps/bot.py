@@ -676,8 +676,9 @@ async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ---------------- Contact Validation Engine (WhatsApp validator) ----------------
 
-WHATSAPP_ACTOR = os.getenv("APIFY_WHATSAPP_ACTOR", "maxcopell/whatsapp-checker")
+WHATSAPP_ACTOR = os.getenv("APIFY_WHATSAPP_ACTOR", "maged120/whatsapp-number-checker")
 VALIDATION_TTL_DAYS = int(os.getenv("VALIDATION_TTL_DAYS", "30"))
+WHATSAPP_BATCH_SIZE = int(os.getenv("WHATSAPP_BATCH_SIZE", "100"))  # actor max = 100
 
 def to_e164(local: str, country: str) -> Optional[str]:
     """Best-effort E.164 conversion using country dial codes we already know."""
@@ -725,28 +726,52 @@ def validate_whatsapp_batch(numbers_e164: list[str], search_id: Optional[str] = 
         return out
 
     # 2. Run Apify actor for missing
+    actor_input = {
+        "phone_numbers": missing,
+        "proxy_configuration": {
+            "useApifyProxy": True,
+            "apifyProxyGroups": ["RESIDENTIAL"],
+        },
+    }
+    log.info("whatsapp actor=%s input_count=%d sample=%s",
+             WHATSAPP_ACTOR, len(missing), missing[:3])
     try:
         items = call_actor_with_rotation(
             WHATSAPP_ACTOR,
-            {"phoneNumbers": missing},
+            actor_input,
             search_id or "validate",
-            timeout_secs=600,
+            timeout_secs=900,
         )
+        log.info("whatsapp actor returned %d dataset items", len(items or []))
+        if items:
+            log.info("whatsapp sample item: %s", items[0])
     except Exception as e:
-        # Mark all missing as error so we don't retry immediately
-        err_msg = str(e)[:300]
+        err_msg = f"{type(e).__name__}: {e}"[:500]
+        log.error("whatsapp actor failed: %s", err_msg)
         for v in missing:
             out[v] = {"status": "error", "result": {}, "cached": False, "error": err_msg}
+        # Persist error so dashboard/logs show real cause instead of silent 'error'
+        try:
+            api("POST", "/api/public/bot/validations",
+                json={"validator": "whatsapp", "contact_type": "phone",
+                      "ttl_days": 0,
+                      "items": [{"contact_value": v, "status": "error",
+                                 "error_message": err_msg,
+                                 "source_search_id": search_id} for v in missing]})
+        except Exception as up_e:
+            log.warning("failed to upload error validations: %s", up_e)
         return out
 
     # 3. Normalize actor output — accept a few common shapes
     def _key(item):
-        for k in ("phoneNumber", "phone", "number", "input"):
+        for k in ("phone_number", "phoneNumber", "phone", "number", "input"):
             if item.get(k):
                 return re.sub(r"\D", "", str(item[k]))
         return None
     def _valid(item):
-        for k in ("isRegistered", "onWhatsApp", "on_whatsapp", "exists", "isValid", "valid"):
+        # maged120: {"is_registered": true/false}
+        for k in ("is_registered", "isRegistered", "onWhatsApp", "on_whatsapp",
+                  "exists", "isValid", "valid", "registered"):
             if k in item:
                 return bool(item[k])
         return None
@@ -758,19 +783,31 @@ def validate_whatsapp_batch(numbers_e164: list[str], search_id: Optional[str] = 
             continue
         result_map["+" + digits] = it
 
+    log.info("whatsapp result_map size=%d (missing=%d)", len(result_map), len(missing))
+
     upload_items = []
     for v in missing:
         raw = result_map.get(v)
         if raw is None:
+            # No row for this number in actor output → treat as unknown/invalid
+            log.info("whatsapp no result for %s → invalid", v)
             out[v] = {"status": "invalid", "result": {}, "cached": False}
             upload_items.append({"contact_value": v, "status": "invalid", "result": {},
                                  "source_search_id": search_id})
             continue
         is_valid = _valid(raw)
-        status = "valid" if is_valid else ("invalid" if is_valid is False else "error")
-        out[v] = {"status": status, "result": raw, "cached": False}
-        upload_items.append({"contact_value": v, "status": status, "result": raw,
-                             "source_search_id": search_id})
+        if is_valid is None:
+            status = "error"
+            err = f"unrecognized actor output keys: {list(raw.keys())[:6]}"
+            log.warning("whatsapp %s → error: %s", v, err)
+            out[v] = {"status": "error", "result": raw, "cached": False, "error": err}
+            upload_items.append({"contact_value": v, "status": "error", "result": raw,
+                                 "error_message": err, "source_search_id": search_id})
+        else:
+            status = "valid" if is_valid else "invalid"
+            out[v] = {"status": status, "result": raw, "cached": False}
+            upload_items.append({"contact_value": v, "status": status, "result": raw,
+                                 "source_search_id": search_id})
 
     try:
         api("POST", "/api/public/bot/validations",
@@ -819,13 +856,17 @@ async def validate_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await status_msg.edit_text("لا يمكن تحويل الأرقام لصيغة دولية.")
         return
 
-    # Run in batches of 100 to keep actor runs short
+    # Run in batches (actor cap = 100)
     results: dict[str, dict] = {}
-    batch = 100
+    batch = WHATSAPP_BATCH_SIZE
+    last_err: Optional[str] = None
     for i in range(0, len(pairs), batch):
         chunk = [p[0] for p in pairs[i:i+batch]]
         r = await asyncio.to_thread(validate_whatsapp_batch, chunk, None)
         results.update(r)
+        for v in r.values():
+            if v.get("status") == "error" and v.get("error"):
+                last_err = v["error"]
         cached_n = sum(1 for v in results.values() if v.get("cached"))
         valid_n = sum(1 for v in results.values() if v.get("status") == "valid")
         try:
@@ -841,9 +882,10 @@ async def validate_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     err_n = sum(1 for v in results.values() if v.get("status") == "error")
 
     if not valid_pairs:
-        await status_msg.edit_text(
-            f"انتهى التحقق: 0 صالح / {invalid_n} غير مسجّل / {err_n} خطأ."
-        )
+        msg = f"انتهى التحقق: 0 صالح / {invalid_n} غير مسجّل / {err_n} خطأ."
+        if last_err:
+            msg += f"\n\n⚠️ سبب الأخطاء:\n{last_err[:400]}"
+        await status_msg.edit_text(msg)
         return
 
     # Build TSV of valid-only
