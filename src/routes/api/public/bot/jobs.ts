@@ -22,7 +22,7 @@ export const Route = createFileRoute("/api/public/bot/jobs")({
           .insert({
             keyword: body.keyword,
             country: body.country,
-            max_pages: body.max_pages ?? 100,
+            max_pages: body.max_pages ?? 500,
             telegram_chat_id: body.telegram_chat_id ?? null,
             telegram_user_id: body.telegram_user_id ?? null,
             source: "telegram",
