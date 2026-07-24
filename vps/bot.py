@@ -170,67 +170,65 @@ def build_facebook_ads_library_url(keyword: str, country: str) -> str:
     }
     return f"https://www.facebook.com/ads/library/?{urlencode(params)}"
 
-def iter_strings(value: Any) -> list[str]:
-    """Collect nested strings from an Apify ad item so number extraction survives schema changes."""
-    strings: list[str] = []
-    if isinstance(value, str):
-        strings.append(value)
-    elif isinstance(value, dict):
-        for child in value.values():
-            strings.extend(iter_strings(child))
-    elif isinstance(value, list):
-        for child in value:
-            strings.extend(iter_strings(child))
-    return strings
+def extract_page_urls(items: list) -> list[str]:
+    """Pull Facebook page URLs from Ads Library scraper output."""
+    urls: set[str] = set()
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        snap = it.get("snapshot") if isinstance(it.get("snapshot"), dict) else {}
+        candidates = [
+            it.get("pageProfileUri"), it.get("pageUrl"), it.get("page_url"),
+            it.get("pageProfileUrl"), it.get("url"),
+            snap.get("page_profile_uri"), snap.get("page_profile_url"),
+        ]
+        page_id = it.get("pageID") or it.get("page_id") or snap.get("page_id")
+        if page_id:
+            candidates.append(f"https://www.facebook.com/{page_id}")
+        for u in candidates:
+            if not u or not isinstance(u, str):
+                continue
+            if "facebook.com" not in u:
+                continue
+            if "/ads/library" in u or "/share/" in u:
+                continue
+            urls.add(u.strip())
+    return list(urls)
 
-def first_value(item: dict, keys: list[str]) -> Optional[str]:
-    for key in keys:
-        value = item.get(key)
-        if value:
-            return str(value)
-    snapshot = item.get("snapshot")
-    if isinstance(snapshot, dict):
-        for key in keys:
-            value = snapshot.get(key)
-            if value:
-                return str(value)
-    return None
+def normalize_local_phone(raw: str, country_dial: Optional[str]) -> Optional[str]:
+    """Match the working script: strip +/spaces, convert country prefix → local 0xxx."""
+    if not raw:
+        return None
+    s = re.sub(r"[\s\-\+\(\)]", "", str(raw))
+    if s.startswith("00"):
+        s = s[2:]
+    s = re.sub(r"[^\d]", "", s)
+    if not s:
+        return None
+    if country_dial and s.startswith(country_dial):
+        s = "0" + s[len(country_dial):]
+    if not s.startswith("0") or len(s) < 9 or len(s) > 12:
+        return None
+    return s
 
-def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: str) -> list[dict]:
-    """
-    Run Apify Facebook Ads Library scraper.
-    Rotates keys automatically on 402/429/insufficient credit.
-    Returns a list of {'text', 'page_url', 'page_name'} items.
-    """
+def call_actor_with_rotation(actor: str, run_input: dict, search_id: str, timeout_secs: int = 900) -> list:
+    """Run an Apify actor, rotating keys on quota/auth errors."""
     key = get_active_key()
     if not key:
         raise RuntimeError("لا توجد مفاتيح Apify نشطة. أضف مفتاحاً من /addkey أو من الواجهة.")
-
-    log_job(search_id, "info", f"استخدام المفتاح: {key['label']}")
-
-    for attempt in range(10):  # up to 10 rotations
+    for _ in range(10):
         try:
+            log_job(search_id, "info", f"Apify actor: {actor} — key: {key['label']}")
             client = ApifyClient(key["api_key"])
-            search_url = build_facebook_ads_library_url(keyword, country)
-            input_data = {
-                "urls": [{"url": search_url}],
-                "count": max_pages,
-                "limitPerSource": max_pages,
-                "scrapeAdDetails": False,
-            }
-            log_job(search_id, "info", f"تشغيل Apify actor: {APIFY_ACTOR}", {"url": search_url})
-            run = client.actor(APIFY_ACTOR).call(run_input=input_data, timeout_secs=600)
-            update_job(search_id, apify_run_id=run["id"])
+            run = client.actor(actor).call(run_input=run_input, timeout_secs=timeout_secs)
             items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
-            # Mark success on key
             api("PATCH", "/api/public/bot/keys", json={"id": key["id"], "increment_usage": True})
-            heartbeat("apify", "online", {"actor": APIFY_ACTOR, "items": len(items)})
+            heartbeat("apify", "online", {"actor": actor, "items": len(items)})
             return items
         except Exception as e:
             msg = str(e)
-            log_job(search_id, "warn", f"خطأ في المفتاح {key['label']}: {msg[:200]}")
-            # Rotate on payment/rate/auth errors
-            if any(t in msg.lower() for t in ["402", "429", "insufficient", "usage limit", "unauthorized", "monthly-usage"]):
+            log_job(search_id, "warn", f"خطأ في {key['label']}: {msg[:200]}")
+            if any(t in msg.lower() for t in ["402", "429", "insufficient", "usage limit", "unauthorized", "monthly-usage", "payment"]):
                 api("PATCH", "/api/public/bot/keys",
                     json={"id": key["id"], "status": "exhausted", "last_error": msg[:500]})
                 key = get_active_key()
@@ -240,6 +238,56 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
                 continue
             raise
     raise RuntimeError("فشل بعد استنفاد كل المفاتيح")
+
+def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: str) -> list[dict]:
+    """
+    Two-stage scrape (matches the user's proven workflow):
+      1) Ads Library → collect Facebook page URLs of active ads
+      2) apify/facebook-pages-scraper → phone + website per page
+    Returns list of {phone, page_url, page_name, has_store} normalized to local format.
+    """
+    search_url = build_facebook_ads_library_url(keyword, country)
+    log_job(search_id, "info", "المرحلة 1/2: جلب روابط الصفحات من مكتبة الإعلانات")
+    ads_input = {
+        "urls": [{"url": search_url}],
+        "count": max_pages,
+        "limitPerSource": max_pages,
+        "scrapeAdDetails": False,
+    }
+    ads = call_actor_with_rotation("curious_coder/facebook-ads-library-scraper", ads_input, search_id)
+    page_urls = extract_page_urls(ads)
+    log_job(search_id, "info", f"تم استخراج {len(page_urls)} رابط صفحة فريد من {len(ads)} إعلان")
+    update_job(search_id, progress=40,
+               progress_message=f"جُمعت {len(page_urls)} صفحة — استخراج الأرقام...",
+               pages_found=len(page_urls))
+    if not page_urls:
+        return []
+
+    pages_input = {
+        "startUrls": [{"url": u} for u in page_urls],
+        "scrapeAbout": True,
+        "maxResults": len(page_urls),
+    }
+    pages = call_actor_with_rotation("apify/facebook-pages-scraper", pages_input, search_id, timeout_secs=1200)
+    log_job(search_id, "info", f"المرحلة 2/2: تم فحص {len(pages)} صفحة")
+
+    dial = DIAL_BY_COUNTRY.get(country)
+    results: dict[str, dict] = {}
+    for p in pages:
+        if not isinstance(p, dict):
+            continue
+        phone = normalize_local_phone(p.get("phone") or "", dial)
+        if not phone or phone in results:
+            continue
+        website = p.get("website") or ""
+        has_store = bool(website) and "facebook.com" not in str(website).lower()
+        results[phone] = {
+            "phone": phone,
+            "page_url": p.get("pageUrl") or p.get("url") or p.get("facebookUrl"),
+            "page_name": p.get("title") or p.get("pageName") or p.get("name"),
+            "has_store": has_store,
+        }
+    return list(results.values())
 
 # ---------------- Worker loop ----------------
 
@@ -278,29 +326,16 @@ async def process_job(app: Application, job: dict) -> None:
         loop = asyncio.get_event_loop()
         items = await loop.run_in_executor(None, run_facebook_scrape, keyword, country, max_pages, sid)
 
-        update_job(sid, progress=60, progress_message=f"معالجة {len(items)} إعلان...", pages_found=len(items))
-        log_job(sid, "info", f"تم استخراج {len(items)} إعلان — بدء استخراج الأرقام")
+        # `items` are already qualified {phone, page_url, page_name, has_store} entries.
+        # Keep only pages WITHOUT an external store (matches the working script's target).
+        qualified = [i for i in items if not i.get("has_store")]
+        excluded = len(items) - len(qualified)
+        log_job(sid, "info",
+                f"تم استخراج {len(items)} رقم — مؤهل بدون متجر: {len(qualified)} — مستبعد (عندهم متجر): {excluded}")
+        update_job(sid, progress=80, progress_message=f"رفع {len(qualified)} رقم مؤهل...")
 
-        # Extract phones from every ad's text-y fields
-        dial = DIAL_BY_COUNTRY.get(country)
-        phones_agg: dict[str, dict] = {}
-        for it in items:
-            text_blob = " ".join(iter_strings(it))
-            page_url = first_value(it, ["pageProfileUri", "pageUrl", "page_url", "pageProfileUrl", "url"])
-            page_name = first_value(it, ["pageName", "page_name", "advertiserName", "advertiser_name"])
-            for p in extract_phones_from_text(text_blob, dial):
-                if p not in phones_agg:
-                    phones_agg[p] = {
-                        "phone": p,
-                        "page_url": page_url,
-                        "page_name": page_name,
-                    }
-
-        update_job(sid, progress=80, progress_message=f"رفع {len(phones_agg)} رقم...")
-
-        # Upload in batches
         result = api("POST", "/api/public/bot/numbers",
-                     json={"search_id": sid, "country": country, "items": list(phones_agg.values())})
+                     json={"search_id": sid, "country": country, "items": qualified})
         new_count = result.get("new_count", 0)
         total = result.get("total", 0)
 
@@ -318,7 +353,7 @@ async def process_job(app: Application, job: dict) -> None:
                     f"✅ <b>اكتمل البحث</b>\n\n"
                     f"🔎 الكلمة: <code>{keyword}</code>\n"
                     f"🌍 الدولة: {country}\n"
-                    f"📄 صفحات: {len(items)}\n"
+                    f"📄 صفحات مؤهلة: {len(qualified)}\n"
                     f"📞 أرقام جديدة: <b>{new_count}</b> / {total}"
                 ),
                 parse_mode=ParseMode.HTML,
