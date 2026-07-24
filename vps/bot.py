@@ -17,6 +17,7 @@ import re
 import signal
 from datetime import datetime
 from typing import Any, Optional
+from urllib.parse import urlencode
 
 import requests
 from apify_client import ApifyClient
@@ -157,6 +158,44 @@ def get_active_key() -> Optional[dict]:
     keys = data.get("keys") or []
     return keys[0] if keys else None
 
+def build_facebook_ads_library_url(keyword: str, country: str) -> str:
+    """Build the public Meta Ads Library search URL Apify expects."""
+    params = {
+        "active_status": "active",
+        "ad_type": "all",
+        "country": country,
+        "q": keyword,
+        "search_type": "keyword_unordered",
+        "media_type": "all",
+    }
+    return f"https://www.facebook.com/ads/library/?{urlencode(params)}"
+
+def iter_strings(value: Any) -> list[str]:
+    """Collect nested strings from an Apify ad item so number extraction survives schema changes."""
+    strings: list[str] = []
+    if isinstance(value, str):
+        strings.append(value)
+    elif isinstance(value, dict):
+        for child in value.values():
+            strings.extend(iter_strings(child))
+    elif isinstance(value, list):
+        for child in value:
+            strings.extend(iter_strings(child))
+    return strings
+
+def first_value(item: dict, keys: list[str]) -> Optional[str]:
+    for key in keys:
+        value = item.get(key)
+        if value:
+            return str(value)
+    snapshot = item.get("snapshot")
+    if isinstance(snapshot, dict):
+        for key in keys:
+            value = snapshot.get(key)
+            if value:
+                return str(value)
+    return None
+
 def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: str) -> list[dict]:
     """
     Run Apify Facebook Ads Library scraper.
@@ -169,17 +208,17 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
 
     log_job(search_id, "info", f"استخدام المفتاح: {key['label']}")
 
-    for attempt in range(len(range(10))):  # up to 10 rotations
+    for attempt in range(10):  # up to 10 rotations
         try:
             client = ApifyClient(key["api_key"])
+            search_url = build_facebook_ads_library_url(keyword, country)
             input_data = {
-                "queryString": keyword,
-                "countryCode": country,
-                "activeStatus": "active",
+                "urls": [{"url": search_url}],
                 "count": max_pages,
-                "adType": "all",
+                "limitPerSource": max_pages,
+                "scrapeAdDetails": False,
             }
-            log_job(search_id, "info", f"تشغيل Apify actor: {APIFY_ACTOR}")
+            log_job(search_id, "info", f"تشغيل Apify actor: {APIFY_ACTOR}", {"url": search_url})
             run = client.actor(APIFY_ACTOR).call(run_input=input_data, timeout_secs=600)
             update_job(search_id, apify_run_id=run["id"])
             items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
@@ -246,20 +285,15 @@ async def process_job(app: Application, job: dict) -> None:
         dial = DIAL_BY_COUNTRY.get(country)
         phones_agg: dict[str, dict] = {}
         for it in items:
-            text_blob = " ".join([
-                str(it.get("adText", "") or ""),
-                str(it.get("body", "") or ""),
-                str(it.get("linkDescription", "") or ""),
-                str(it.get("caption", "") or ""),
-                str(it.get("cta", "") or ""),
-                str(it.get("pageName", "") or ""),
-            ])
+            text_blob = " ".join(iter_strings(it))
+            page_url = first_value(it, ["pageProfileUri", "pageUrl", "page_url", "pageProfileUrl", "url"])
+            page_name = first_value(it, ["pageName", "page_name", "advertiserName", "advertiser_name"])
             for p in extract_phones_from_text(text_blob, dial):
                 if p not in phones_agg:
                     phones_agg[p] = {
                         "phone": p,
-                        "page_url": it.get("pageProfileUri") or it.get("pageUrl"),
-                        "page_name": it.get("pageName"),
+                        "page_url": page_url,
+                        "page_name": page_name,
                     }
 
         update_job(sid, progress=80, progress_message=f"رفع {len(phones_agg)} رقم...")
