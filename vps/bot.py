@@ -352,13 +352,12 @@ async def search_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 async def search_keyword(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     ctx.user_data["keyword"] = update.message.text.strip()
     kb = [
-        [InlineKeyboardButton(name, callback_data=f"c:{code}")]
-        for code, name in COUNTRIES[i:i+2] for i in range(0, len(COUNTRIES), 2)
-    ][:len(COUNTRIES)]
-    kb = [[InlineKeyboardButton(name, callback_data=f"c:{code}") for code, name in COUNTRIES[i:i+3]]
-          for i in range(0, len(COUNTRIES), 3)]
+        [InlineKeyboardButton(name, callback_data=f"c:{code}") for code, name in COUNTRIES[i:i+3]]
+        for i in range(0, len(COUNTRIES), 3)
+    ]
     await update.message.reply_text("🌍 اختر الدولة:", reply_markup=InlineKeyboardMarkup(kb))
     return CHOOSE_COUNTRY
+
 
 async def search_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     q = update.callback_query
