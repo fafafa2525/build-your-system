@@ -680,7 +680,10 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "👋 <b>مرحباً في AdsBot</b>\n\n"
         "الأوامر المتاحة:\n"
-        "🔍 /search — بحث جديد في مكتبة إعلانات فيسبوك\n"
+        "🔍 /search — بحث في مكتبة إعلانات فيسبوك\n"
+        "🗺️ /gmaps — بحث في Google Maps (نشاط + مدينة)\n"
+        "✅ /validate — فحص أرقام آخر بحث عبر واتساب\n"
+
         "🔑 /addkey — إضافة مفتاح Apify\n"
         "📊 /keys — عرض حالة المفاتيح\n"
         "📈 /stats — إحصائيات\n"
