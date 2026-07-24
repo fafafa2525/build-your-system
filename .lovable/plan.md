@@ -1,93 +1,65 @@
-# خطة تطوير AdsBot على مراحل
+# خطة المرحلة 2 — Google Maps + Source Providers Architecture
 
-نبني كل مرحلة، نختبرها، ننتقل للتالية. ما ننتقل قبل ما تأكد إنها شغالة.
+الفكرة: تحويل النظام من "بوت فيسبوك" إلى منصة Lead Generation متعددة المصادر، وGoogle Maps هو أول مصدر جديد مبني على نفس البنية (Jobs، Keys، Numbers، Validator، Export). لا يتم كسر أي ميزة حالية.
 
----
+## 1) تعديلات قاعدة البيانات (Migration واحدة)
 
-## 🛡️ المرحلة 0 — حماية أساسية (سريعة، قبل أي إضافة)
+- `searches`: إضافة أعمدة `provider TEXT NOT NULL DEFAULT 'facebook'`, `city TEXT`, `category TEXT` (تُستخدم لـ gmaps؛ facebook يتجاهلها).
+- `extracted_numbers`: إضافة `sources TEXT[] DEFAULT ARRAY['facebook']` (مصفوفة مصادر — للـ dedup عبر المصادر)، وحقول أعمال Google Maps:
+  `business_name`, `category`, `address`, `city`, `rating NUMERIC`, `reviews_count INT`, `latitude NUMERIC`, `longitude NUMERIC`, `google_maps_url`.
+- جميع الأعمدة nullable لعدم كسر البيانات الحالية. تحديث بيانات ما قبل الترحيل: تعبئة `sources` بالقيمة `{facebook}` تلقائياً.
+- Backfill: `UPDATE searches SET provider='facebook' WHERE provider IS NULL;`
 
-**الهدف**: نحمي السيستم قبل ما نبني عليه أكثر.
+## 2) بنية Source Providers (Backend)
 
-1. **قفل Dashboard بـ PIN**: صفحة دخول بسيطة (PIN واحد مخزن كـ secret)، بدون auth كامل.
-2. **Watchdog للـ jobs العالقة**: cron كل 10 دقائق يعلم أي job عليه أكثر من 30 دقيقة كـ `failed`.
-3. **حد يومي لكل مستخدم تلجرام**: max 10 بحث/يوم لكل `telegram_user_id` (تجنب استنزاف مفاتيح Apify).
+ملف جديد `src/lib/providers/types.ts` يعرّف واجهة `SourceProvider`:
+```
+{ id, label, requiredFields: string[], jobDefaults }
+```
+تسجيل خفيف في `src/lib/providers/index.ts` (facebook + gmaps الآن، وسهل إضافة instagram/tiktok لاحقاً).
 
-**ناتج**: ما حد يعبث بـ Dashboard، ولا jobs عالقة، ولا استهلاك جنوني.
+على الـ VPS، ملف `vps/providers/base.py` يحدد واجهة `Provider.run(job, key, progress_cb) -> list[ExtractedItem]`. ثم:
+- `vps/providers/facebook.py` — يلفّ الكود الحالي (Ads Library + Pages Scraper).
+- `vps/providers/gmaps.py` — يستدعي `compass/crawler-google-places` عبر نفس `call_actor_with_rotation` (نفس نظام المفاتيح، نفس exhausted detection، نفس logs).
 
----
+`process_job` في `bot.py` يختار الـ provider حسب `job['provider']`، ويستخدم نفس الـ heartbeat/log_job/update_job/upload path.
 
-## ✅ المرحلة 1 — WhatsApp Validator (الأولوية القصوى)
+## 3) أمر البوت `/gmaps`
 
-**الهدف**: لا نصدر أرقام إلا المضمون تسجيلها بواتساب.
+`ConversationHandler` جديد بثلاث حالات: نوع النشاط → المدينة → الدولة (زر inline من نفس قائمة COUNTRIES). يُنشئ job عبر نفس endpoint `POST /api/public/bot/jobs` مع `provider: "gmaps"`, `category`, `city`, `country`. يستقبل نفس تحديثات التقدم الحية.
 
-1. **جدول جديد** `phone_validations`: `phone`, `is_whatsapp`, `has_photo`, `last_checked_at`.
-2. **Actor**: `maxcopell/whatsapp-checker` (أو بديل مماثل).
-3. **مرحلة ثالثة في البوت** بعد الاستخراج: يفحص الأرقام المستخرجة → يعلم فقط الشغالين.
-4. **زر في Dashboard**: "فحص واتساب لأرقام محددة" (يشتغل بالخلفية).
-5. **خيار في `/search`**: هل تفحص واتساب؟ (نعم/لا) — الفحص يضيف دقائق للجوب.
-6. **Cache 30 يوم**: ما نعيد فحص رقم فحصناه قريب.
+## 4) الـ API layer
 
-**ناتج**: ملف tsv فيه فقط أرقام واتساب مضمونة 100%.
+- `POST /api/public/bot/jobs`: قبول `provider`, `city`, `category` (اختيارية). نفس الـ rate limit اليومي.
+- `POST /api/public/bot/numbers`: قبول حقول Google Maps الجديدة و`source` (`facebook`|`gmaps`). عند وجود الرقم مسبقاً: `sources = array_append_unique`، ودمج الحقول الفارغة فقط (لا نكتب فوق بيانات فيسبوك ببيانات ناقصة، والعكس).
+- لا endpoint جديد للـ validator — نفس `/validate` يعمل كما هو لأن الأرقام كلها في نفس الجدول.
 
----
+## 5) Dashboard
 
-## 🗺️ المرحلة 2 — Google Maps Scraper (مصدر جديد قوي)
+صفحة جديدة `src/routes/_authenticated/leads.tsx` (بديل موحّد ل `numbers.tsx` لاحقاً لكن نُبقي القديم عاملاً):
+- جدول: النشاط، المدينة، التقييم، عدد المراجعات، الهاتف، الموقع، ✅ واتساب؟، المصادر (chips).
+- فلاتر: الدولة، المدينة، النشاط، الحد الأدنى للتقييم، وجود موقع، وجود واتساب، المصدر.
+- زر تصدير: TSV / CSV / VCF (نفس شكل التصدير الحالي مع أعمدة إضافية).
 
-**الهدف**: أرقام أعمال محلية عالية الجودة (أصحاب محلات فعليين).
+تعديل بسيط في القائمة الجانبية لإضافة رابط "Leads".
 
-1. **عمود `source`** في `extracted_numbers`: 'facebook' / 'gmaps' / …
-2. **أمر بوت جديد** `/gmaps`: يطلب "نوع النشاط + المدينة" (مثل: مطاعم الرياض).
-3. **Actor**: `compass/crawler-google-places`.
-4. **بيانات إضافية**: `business_name`, `rating`, `reviews_count`, `address`, `website`, `category`.
-5. **جدول جديد** `business_leads` (مرتبط بـ `extracted_numbers`) لبيانات الأعمال.
-6. **صفحة Dashboard جديدة** "الأعمال المحلية": فلترة حسب المدينة/التقييم/الفئة.
-7. **Dedup موحد**: لو نفس الرقم من فيسبوك + قوقل ماب، ما يتكرر (بس تظهر المصادر).
+## 6) نقاط الجودة
 
-**ناتج**: مصدر ليدز جودته أعلى بكثير من فيسبوك، مع تفاصيل عمل كاملة.
+- لا نلمس ملفات auto-gen (`client.ts`, `client.server.ts`, `types.ts`) — التحديث سيأتي بعد قبول الـ migration.
+- تعامل مع أخطاء Apify بنفس آلية rotation.
+- Logs بالعربي عبر `log_job` كما هو الحال حالياً.
+- Backward compatible: أي job قديم بدون `provider` يُعامل كـ `facebook`.
 
----
+## 7) الخطوات (بالترتيب)
 
-## 📱 المرحلة 3 — Instagram + TikTok
+1. Migration للأعمدة الجديدة.
+2. تحديث الـ API endpoints (jobs + numbers).
+3. بنية providers على VPS + `/gmaps` command.
+4. صفحة Leads + الفلاتر + التصدير.
+5. توثيق النشر للـ VPS في نفس ملف `vps/README.md`.
 
-**الهدف**: تغطية كل قنوات السوشيال بنفس الواجهة.
+## Technical
 
-1. **`/insta`**: Actor `apify/instagram-scraper` — يبحث كلمة → حسابات → أرقام + إيميلات من البايو.
-2. **`/tiktok`**: Actor `clockworks/free-tiktok-scraper` — نفس المنطق.
-3. **قائمة موحدة في البوت**: `/search` تسأل أولاً "من أي مصدر؟" (فيسبوك/انستقرام/تيكتوك/قوقل ماب).
-4. **صفحة Dashboard**: تبويبات حسب المصدر + نظرة موحدة.
-
-**ناتج**: عميلك يختار من 4 مصادر بضغطة، والسيستم يوحدها ويعطيه ملف واحد نظيف.
-
----
-
-## 📧 المرحلة 4 — Email + Website Enrichment
-
-**الهدف**: نفتح قناة تسويق ثانية (كولد إيميل) + بيانات إثراء كاملة.
-
-1. **عمود** `email` + `website` + `enriched_at` في `extracted_numbers`.
-2. **Actor**: `vdrmota/contact-info-scraper` — يزور موقع الصفحة ويستخرج كل معلومات الاتصال.
-3. **أمر `/enrich`** في البوت: يأخذ ليدز موجودة (بدون إيميل) ويحاول إثرائها.
-4. **تصدير جديد**: CSV/VCF مع أعمدة (رقم، واتساب، إيميل، موقع، انستقرام، فيسبوك).
-5. **صفحة Dashboard "الإيميلات"**: تصفح وتصدير الإيميلات المستخرجة.
-
-**ناتج**: كل ليد عندك بياناته كاملة (رقم + إيميل + كل حساباته الاجتماعية) = سعره أعلى بـ 5 أضعاف.
-
----
-
-## 🎯 مراحل مستقبلية (نناقشها بعد ما نخلص الحالية)
-
-- **Multi-tenant + نظام أرصدة** لتحويل السيستم لـ SaaS تبيعه.
-- **إرسال واتساب تلقائي** عبر WhatsApp Business API.
-- **AI Personalization** لرسائل مخصصة لكل ليد (Lovable AI Gemini مجاني).
-- **LinkedIn B2B Scraper**.
-- **Webhook / Google Sheets** integration للعملاء.
-
----
-
-## 📋 قواعد التنفيذ
-
-- كل مرحلة = migration + كود VPS + كود Dashboard + اختبار كامل.
-- ما ننتقل لمرحلة قبل ما تأكد الحالية شغالة عندك على VPS.
-- بعد كل مرحلة: تحديث `vps/bot.py` = `git pull && systemctl restart adsbot`.
-
-**نبدأ بالمرحلة 0 (الحماية)؟**
+- Actor المستخدم: `compass/crawler-google-places` (الأكثر استقراراً لـ Google Maps). Input: `{ searchStringsArray: ["<category> in <city>, <country>"], maxCrawledPlaces, language }`.
+- Deduplication: طبيعة الجدول تبقى phone-based (unique). المصادر تُدمج في مصفوفة، والحقول الوصفية تُملأ فقط إذا كانت `NULL`.
+- `sources` array بدل جدول junction جديد لتبسيط الاستعلامات في الـ Dashboard.
