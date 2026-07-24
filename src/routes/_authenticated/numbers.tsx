@@ -35,6 +35,8 @@ type Row = {
   page_url: string | null;
   page_name: string | null;
   kind: string | null;
+  address: string | null;
+
 };
 
 function SourceBadge({ s }: { s: string }) {
