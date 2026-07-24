@@ -883,6 +883,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("addkey", addkey_cmd))
     app.add_handler(CommandHandler("keys", keys_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
+    app.add_handler(CommandHandler("validate", validate_cmd))
     return app
 
 def main() -> None:
