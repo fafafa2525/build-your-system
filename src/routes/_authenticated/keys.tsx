@@ -66,6 +66,24 @@ function KeysPage() {
     qc.invalidateQueries({ queryKey: ["apify-keys"] });
   }
 
+  async function delExhausted() {
+    const count = keys.data?.filter((k: any) => k.status === "exhausted").length ?? 0;
+    if (!count) return toast.info("لا توجد مفاتيح منتهية");
+    if (!confirm(`حذف ${count} مفتاح منتهي؟`)) return;
+    const { error } = await supabase.from("apify_keys").delete().eq("status", "exhausted");
+    if (error) return toast.error(error.message);
+    toast.success(`تم حذف ${count} مفتاح`);
+    qc.invalidateQueries({ queryKey: ["apify-keys"] });
+  }
+
+  async function reactivate(id: string) {
+    const { error } = await supabase.from("apify_keys")
+      .update({ status: "active", last_error: null }).eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("تم إعادة التفعيل");
+    qc.invalidateQueries({ queryKey: ["apify-keys"] });
+  }
+
   const active = keys.data?.filter((k: any) => k.status === "active").length ?? 0;
   const exhausted = keys.data?.filter((k: any) => k.status === "exhausted").length ?? 0;
 
