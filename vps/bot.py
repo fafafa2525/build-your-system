@@ -676,8 +676,9 @@ async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ---------------- Contact Validation Engine (WhatsApp validator) ----------------
 
-WHATSAPP_ACTOR = os.getenv("APIFY_WHATSAPP_ACTOR", "maxcopell/whatsapp-checker")
+WHATSAPP_ACTOR = os.getenv("APIFY_WHATSAPP_ACTOR", "maged120/whatsapp-number-checker")
 VALIDATION_TTL_DAYS = int(os.getenv("VALIDATION_TTL_DAYS", "30"))
+WHATSAPP_BATCH_SIZE = int(os.getenv("WHATSAPP_BATCH_SIZE", "100"))  # actor max = 100
 
 def to_e164(local: str, country: str) -> Optional[str]:
     """Best-effort E.164 conversion using country dial codes we already know."""
