@@ -158,6 +158,11 @@ function KeysPage() {
                   <TableCell className="text-xs text-destructive max-w-[200px] truncate">{k.last_error ?? "—"}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
+                      {k.status === "exhausted" && (
+                        <Button size="sm" variant="ghost" title="إعادة تفعيل" onClick={() => reactivate(k.id)}>
+                          <Power className="w-4 h-4 text-success" />
+                        </Button>
+                      )}
                       <Button size="sm" variant="ghost" onClick={() => toggleStatus(k.id, k.status)}>
                         {k.status === "active" ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
                       </Button>
