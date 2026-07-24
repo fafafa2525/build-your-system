@@ -74,10 +74,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content:
           "منصة لأتمتة استخراج أرقام واتساب من مكتبة إعلانات فيسبوك عبر بوت تلجرام مع إدارة كاملة للمفاتيح والنتائج.",
       },
-      { property: "og:title", content: "AdsBot — لوحة تحكم استخراج الأرقام" },
-      { property: "og:description", content: "بوت تلجرام + لوحة تحكم لسحب الأرقام من مكتبة إعلانات فيسبوك." },
+      { property: "og:title", content: "AdsBot — لوحة تحكم استخراج أرقام واتساب" },
+      { property: "og:description", content: "منصة لأتمتة استخراج أرقام واتساب من مكتبة إعلانات فيسبوك عبر بوت تلجرام مع إدارة كاملة للمفاتيح والنتائج." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "AdsBot — لوحة تحكم استخراج أرقام واتساب" },
+      { name: "twitter:description", content: "منصة لأتمتة استخراج أرقام واتساب من مكتبة إعلانات فيسبوك عبر بوت تلجرام مع إدارة كاملة للمفاتيح والنتائج." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8dd20fd5-6edf-40ba-9d6a-7978257510bc/id-preview-62aa8685--ebd30160-0036-4259-b107-b49c8e6620dc.lovable.app-1784815592948.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8dd20fd5-6edf-40ba-9d6a-7978257510bc/id-preview-62aa8685--ebd30160-0036-4259-b107-b49c8e6620dc.lovable.app-1784815592948.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
