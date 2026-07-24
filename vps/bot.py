@@ -249,13 +249,10 @@ def classify_phone(local: str, country: str) -> str:
     """Return one of: mobile | landline | tollfree | unified | invalid."""
     if not local:
         return "invalid"
-    # Toll-free / unified numbers common across Arab countries
-    if local.startswith(("0800", "800", "0900", "0920", "0700", "0500")):
-        # Note: 05 is real mobile in SA/DZ/etc — handle after checking length
-        if local.startswith(("0800", "800")):
-            return "tollfree"
-        if local.startswith(("0900", "0920", "0700")):
-            return "unified"
+    if local.startswith(("0800", "800", "9200")):
+        return "tollfree"
+    if local.startswith(("0920", "0900", "0700")):
+        return "unified"
     rules = COUNTRY_RULES.get(country)
     if not rules:
         return "mobile" if 8 <= len(local) <= 12 else "invalid"
