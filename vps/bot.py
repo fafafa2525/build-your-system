@@ -422,6 +422,91 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
             }
     return list(results.values())
 
+# ---------------- Google Maps provider ----------------
+
+GMAPS_ACTOR = os.getenv("APIFY_GMAPS_ACTOR", "compass/crawler-google-places")
+
+def run_gmaps_scrape(category: str, city: str, country: str, max_results: int,
+                     search_id: str, progress_cb=None) -> list[dict]:
+    """
+    Scrape Google Maps for a category in a city/country.
+    Uses compass/crawler-google-places; rotates Apify keys via call_actor_with_rotation.
+    Returns items shaped for POST /api/public/bot/numbers.
+    """
+    query = f"{category} in {city}, {country}" if city else f"{category} in {country}"
+    if progress_cb:
+        progress_cb(f"🗺️ Google Maps — البحث عن: {query}")
+    log_job(search_id, "info", f"Google Maps: {query} (max={max_results})")
+
+    run_input = {
+        "searchStringsArray": [query],
+        "maxCrawledPlacesPerSearch": max_results,
+        "language": "ar",
+        "skipClosedPlaces": True,
+        "scrapeContacts": True,
+    }
+
+    def cb(status, n):
+        if progress_cb:
+            pct = int(min(99, (n / max(1, max_results)) * 100))
+            progress_cb(f"🗺️ Google Maps — {status} — {n} نتيجة ({pct}%)")
+
+    places = call_actor_with_rotation(GMAPS_ACTOR, run_input, search_id,
+                                       timeout_secs=1200, progress_cb=cb)
+    log_job(search_id, "info", f"Google Maps: تم استخراج {len(places)} نشاط")
+
+    results: dict[str, dict] = {}
+    for p in places:
+        if not isinstance(p, dict):
+            continue
+        # Collect phone candidates
+        candidates: list[str] = []
+        for field in ("phone", "phoneNumber", "phoneUnformatted"):
+            v = p.get(field)
+            if v: candidates.append(str(v))
+        for extra in (p.get("additionalInfo") or {}).get("Phone", []) or []:
+            if isinstance(extra, dict):
+                for v in extra.values():
+                    if v: candidates.append(str(v))
+
+        biz_name = p.get("title") or p.get("name")
+        category_name = p.get("categoryName") or (p.get("categories") or [None])[0]
+        addr = p.get("address")
+        loc_city = p.get("city") or city
+        rating = p.get("totalScore") or p.get("rating")
+        reviews = p.get("reviewsCount") or p.get("reviewCount")
+        lat = (p.get("location") or {}).get("lat") if isinstance(p.get("location"), dict) else p.get("latitude")
+        lng = (p.get("location") or {}).get("lng") if isinstance(p.get("location"), dict) else p.get("longitude")
+        website = p.get("website") or p.get("webUrl")
+        gmaps_url = p.get("url") or p.get("googleMapsUrl")
+
+        for raw in candidates:
+            phone = normalize_local_phone(raw, country)
+            if not phone:
+                continue
+            kind = classify_phone(phone, country)
+            if kind == "invalid":
+                continue
+            if phone in results:
+                continue
+            results[phone] = {
+                "phone": phone,
+                "kind": kind,
+                "business_name": biz_name,
+                "category": category_name,
+                "address": addr,
+                "city": loc_city,
+                "rating": rating,
+                "reviews_count": reviews,
+                "latitude": lat,
+                "longitude": lng,
+                "google_maps_url": gmaps_url,
+                "website": website,
+                "page_name": biz_name,
+            }
+    return list(results.values())
+
+
 
 
 # ---------------- Worker loop ----------------
