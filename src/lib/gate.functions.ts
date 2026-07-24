@@ -32,7 +32,7 @@ export const isUnlocked = createServerFn({ method: "GET" }).handler(async () => 
 });
 
 export const unlockDashboard = createServerFn({ method: "POST" })
-  .inputValidator((data: { pin: string }) => data)
+  .validator((data: { pin: string }) => data)
   .handler(async ({ data }) => {
     const expected = process.env.DASHBOARD_PIN;
     if (!expected) throw new Error("DASHBOARD_PIN is not set");
