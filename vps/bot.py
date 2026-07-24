@@ -856,13 +856,17 @@ async def validate_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await status_msg.edit_text("لا يمكن تحويل الأرقام لصيغة دولية.")
         return
 
-    # Run in batches of 100 to keep actor runs short
+    # Run in batches (actor cap = 100)
     results: dict[str, dict] = {}
-    batch = 100
+    batch = WHATSAPP_BATCH_SIZE
+    last_err: Optional[str] = None
     for i in range(0, len(pairs), batch):
         chunk = [p[0] for p in pairs[i:i+batch]]
         r = await asyncio.to_thread(validate_whatsapp_batch, chunk, None)
         results.update(r)
+        for v in r.values():
+            if v.get("status") == "error" and v.get("error"):
+                last_err = v["error"]
         cached_n = sum(1 for v in results.values() if v.get("cached"))
         valid_n = sum(1 for v in results.values() if v.get("status") == "valid")
         try:
