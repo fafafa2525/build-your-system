@@ -446,7 +446,9 @@ def build_app() -> Application:
             CHOOSE_COUNTRY: [CallbackQueryHandler(search_country, pattern=r"^c:")],
         },
         fallbacks=[CommandHandler("cancel", cancel_cmd)],
+        allow_reentry=True,
     )
+
 
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
