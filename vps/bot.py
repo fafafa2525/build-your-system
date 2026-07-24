@@ -50,8 +50,11 @@ logging.basicConfig(
 )
 log = logging.getLogger("adsbot")
 
-# Conversation states
+# Conversation states — Facebook flow
 CHOOSE_KEYWORD, CHOOSE_COUNTRY = range(2)
+# Conversation states — Google Maps flow
+GM_CATEGORY, GM_CITY, GM_COUNTRY = range(10, 13)
+
 
 COUNTRIES = [
     ("DZ", "🇩🇿 الجزائر"), ("MA", "🇲🇦 المغرب"), ("TN", "🇹🇳 تونس"),
