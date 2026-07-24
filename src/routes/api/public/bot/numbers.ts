@@ -5,11 +5,13 @@ export const Route = createFileRoute("/api/public/bot/numbers")({
   server: {
     handlers: {
       // GET recent numbers, optionally filtered by telegram_user_id (from their last search)
+      // v2: fixed handler registration
       GET: async ({ request }) => {
         const err = checkBotToken(request);
         if (err) return err;
         const url = new URL(request.url);
         const tgUid = url.searchParams.get("telegram_user_id");
+        console.log(`[numbers GET] telegram_user_id=${tgUid}`);
         const limit = Math.min(Number(url.searchParams.get("limit") ?? 500), 2000);
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         let searchIds: string[] | null = null;
@@ -32,6 +34,7 @@ export const Route = createFileRoute("/api/public/bot/numbers")({
         if (searchIds) q = q.in("last_search_id", searchIds);
         const { data, error } = await q;
         if (error) return jsonError(error.message, 500);
+        console.log(`[numbers GET] returning ${(data ?? []).length} items (searchIds=${searchIds?.join(",") ?? "any"})`);
         return json({ items: data ?? [] });
       },
 
