@@ -326,29 +326,16 @@ async def process_job(app: Application, job: dict) -> None:
         loop = asyncio.get_event_loop()
         items = await loop.run_in_executor(None, run_facebook_scrape, keyword, country, max_pages, sid)
 
-        update_job(sid, progress=60, progress_message=f"معالجة {len(items)} إعلان...", pages_found=len(items))
-        log_job(sid, "info", f"تم استخراج {len(items)} إعلان — بدء استخراج الأرقام")
+        # `items` are already qualified {phone, page_url, page_name, has_store} entries.
+        # Keep only pages WITHOUT an external store (matches the working script's target).
+        qualified = [i for i in items if not i.get("has_store")]
+        excluded = len(items) - len(qualified)
+        log_job(sid, "info",
+                f"تم استخراج {len(items)} رقم — مؤهل بدون متجر: {len(qualified)} — مستبعد (عندهم متجر): {excluded}")
+        update_job(sid, progress=80, progress_message=f"رفع {len(qualified)} رقم مؤهل...")
 
-        # Extract phones from every ad's text-y fields
-        dial = DIAL_BY_COUNTRY.get(country)
-        phones_agg: dict[str, dict] = {}
-        for it in items:
-            text_blob = " ".join(iter_strings(it))
-            page_url = first_value(it, ["pageProfileUri", "pageUrl", "page_url", "pageProfileUrl", "url"])
-            page_name = first_value(it, ["pageName", "page_name", "advertiserName", "advertiser_name"])
-            for p in extract_phones_from_text(text_blob, dial):
-                if p not in phones_agg:
-                    phones_agg[p] = {
-                        "phone": p,
-                        "page_url": page_url,
-                        "page_name": page_name,
-                    }
-
-        update_job(sid, progress=80, progress_message=f"رفع {len(phones_agg)} رقم...")
-
-        # Upload in batches
         result = api("POST", "/api/public/bot/numbers",
-                     json={"search_id": sid, "country": country, "items": list(phones_agg.values())})
+                     json={"search_id": sid, "country": country, "items": qualified})
         new_count = result.get("new_count", 0)
         total = result.get("total", 0)
 
