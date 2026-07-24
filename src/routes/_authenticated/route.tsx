@@ -1,16 +1,24 @@
-import { createFileRoute, Outlet, Link, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Outlet, Link, useRouterState, useRouter, redirect } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Radar,
   LayoutDashboard,
-  Search,
   Phone,
   KeyRound,
   Settings,
   History,
+  LogOut,
 } from "lucide-react";
+import { isUnlocked, lockDashboard } from "@/lib/gate.functions";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
+  beforeLoad: async ({ location }) => {
+    const res = await isUnlocked();
+    if (!res.unlocked) {
+      throw redirect({ to: "/unlock", search: { redirect: location.href } });
+    }
+  },
   component: AuthShell,
 });
 
@@ -24,6 +32,15 @@ const NAV = [
 
 function AuthShell() {
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const router = useRouter();
+  const lock = useServerFn(lockDashboard);
+
+  async function handleLock() {
+    await lock();
+    await router.navigate({ to: "/unlock", replace: true });
+    router.invalidate();
+  }
+
 
 
   return (
@@ -58,6 +75,15 @@ function AuthShell() {
             );
           })}
         </nav>
+        <div className="p-3 border-t border-sidebar-border">
+          <button
+            onClick={handleLock}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-sidebar-accent transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            قفل الجلسة
+          </button>
+        </div>
       </aside>
 
       <main className="flex-1 overflow-x-hidden">
@@ -67,6 +93,13 @@ function AuthShell() {
             <Radar className="w-5 h-5 text-primary" />
             <span className="font-bold">AdsBot</span>
           </div>
+          <button
+            onClick={handleLock}
+            className="text-xs text-muted-foreground flex items-center gap-1 px-2 py-1 rounded hover:bg-accent"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            قفل
+          </button>
         </div>
 
         <div className="md:hidden border-b border-border overflow-x-auto flex">
