@@ -275,17 +275,46 @@ def extract_phones_from_text(text: str, country: str) -> list[str]:
             out.add(norm)
     return list(out)
 
-def call_actor_with_rotation(actor: str, run_input: dict, search_id: str, timeout_secs: int = 900) -> list:
-    """Run an Apify actor, rotating keys on quota/auth errors."""
+def call_actor_with_rotation(actor: str, run_input: dict, search_id: str,
+                             timeout_secs: int = 900,
+                             progress_cb=None) -> list:
+    """Run an Apify actor, rotating keys on quota/auth errors.
+    progress_cb(status, items_count) is called every few seconds while the run is live."""
     key = get_active_key()
     if not key:
         raise RuntimeError("لا توجد مفاتيح Apify نشطة. أضف مفتاحاً من /addkey أو من الواجهة.")
+    import time as _time
     for _ in range(10):
         try:
             log_job(search_id, "info", f"Apify actor: {actor} — key: {key['label']}")
             client = ApifyClient(key["api_key"])
-            run = client.actor(actor).call(run_input=run_input, timeout_secs=timeout_secs)
-            items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+            # Start async so we can poll and stream progress back to the user.
+            run = client.actor(actor).start(run_input=run_input, timeout_secs=timeout_secs)
+            run_id = run["id"]
+            dataset_id = run["defaultDatasetId"]
+            deadline = _time.time() + timeout_secs
+            last_status = ""
+            while _time.time() < deadline:
+                info = client.run(run_id).get()
+                status = info.get("status", "")
+                stats = info.get("stats") or {}
+                # cheap item count via dataset info
+                ds_info = client.dataset(dataset_id).get() or {}
+                item_count = ds_info.get("itemCount", 0)
+                if progress_cb and status != last_status:
+                    try: progress_cb(status, item_count)
+                    except Exception: pass
+                    last_status = status
+                elif progress_cb:
+                    try: progress_cb(status, item_count)
+                    except Exception: pass
+                if status in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
+                    break
+                _time.sleep(6)
+            info = client.run(run_id).get()
+            if info.get("status") != "SUCCEEDED":
+                raise RuntimeError(f"Apify run {info.get('status')}: {info.get('statusMessage','')}")
+            items = list(client.dataset(dataset_id).iterate_items())
             api("PATCH", "/api/public/bot/keys", json={"id": key["id"], "increment_usage": True})
             heartbeat("apify", "online", {"actor": actor, "items": len(items)})
             return items
@@ -303,27 +332,36 @@ def call_actor_with_rotation(actor: str, run_input: dict, search_id: str, timeou
             raise
     raise RuntimeError("فشل بعد استنفاد كل المفاتيح")
 
-def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: str) -> list[dict]:
+def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: str,
+                        progress_cb=None) -> list[dict]:
     """
-    Two-stage scrape (matches the user's proven workflow):
+    Two-stage scrape:
       1) Ads Library → collect Facebook page URLs of active ads
       2) apify/facebook-pages-scraper → phone + website per page
-    Returns list of {phone, page_url, page_name, has_store} normalized to local format.
     """
     search_url = build_facebook_ads_library_url(keyword, country)
-    log_job(search_id, "info", "المرحلة 1/2: جلب روابط الصفحات من مكتبة الإعلانات")
+    log_job(search_id, "info", f"المرحلة 1/2: فتح مكتبة الإعلانات — {search_url}")
+    if progress_cb: progress_cb("🔗 المرحلة 1/2: فتح مكتبة إعلانات فيسبوك...")
     ads_input = {
         "urls": [{"url": search_url}],
         "count": max_pages,
         "limitPerSource": max_pages,
         "scrapeAdDetails": False,
     }
-    ads = call_actor_with_rotation("curious_coder/facebook-ads-library-scraper", ads_input, search_id)
+
+    def ads_cb(status, n):
+        if progress_cb:
+            progress_cb(f"🔗 المرحلة 1/2: مكتبة الإعلانات — {status} — {n} إعلان حتى الآن")
+
+    ads = call_actor_with_rotation("curious_coder/facebook-ads-library-scraper", ads_input, search_id,
+                                   progress_cb=ads_cb)
     page_urls = extract_page_urls(ads)
     log_job(search_id, "info", f"تم استخراج {len(page_urls)} رابط صفحة فريد من {len(ads)} إعلان")
     update_job(search_id, progress=40,
                progress_message=f"جُمعت {len(page_urls)} صفحة — استخراج الأرقام...",
                pages_found=len(page_urls))
+    if progress_cb:
+        progress_cb(f"✅ المرحلة 1/2 انتهت — {len(ads)} إعلان → {len(page_urls)} صفحة فريدة\n\n📞 المرحلة 2/2: فحص الصفحات لاستخراج الأرقام...")
     if not page_urls:
         return []
 
@@ -332,14 +370,20 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
         "scrapeAbout": True,
         "maxResults": len(page_urls),
     }
-    pages = call_actor_with_rotation("apify/facebook-pages-scraper", pages_input, search_id, timeout_secs=1200)
+
+    def pages_cb(status, n):
+        if progress_cb:
+            pct = int(min(99, (n / max(1, len(page_urls))) * 100))
+            progress_cb(f"📞 المرحلة 2/2: {status} — {n}/{len(page_urls)} صفحة ({pct}%)")
+
+    pages = call_actor_with_rotation("apify/facebook-pages-scraper", pages_input, search_id,
+                                     timeout_secs=1200, progress_cb=pages_cb)
     log_job(search_id, "info", f"المرحلة 2/2: تم فحص {len(pages)} صفحة")
 
     results: dict[str, dict] = {}
     for p in pages:
         if not isinstance(p, dict):
             continue
-        # Collect every phone candidate: the `phone` field + free-text in about/info/bio.
         candidates: list[str] = []
         for field in ("phone", "phoneNumber", "phone_number"):
             v = p.get(field)
@@ -364,17 +408,17 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
             kind = classify_phone(phone, country)
             if kind == "invalid":
                 continue
-            # Keep the best classification if we already saw this number
             if phone in results:
                 continue
             results[phone] = {
                 "phone": phone,
-                "kind": kind,           # mobile | landline | tollfree | unified
+                "kind": kind,
                 "page_url": page_url,
                 "page_name": page_name,
                 "has_store": has_store,
             }
     return list(results.values())
+
 
 
 # ---------------- Worker loop ----------------
