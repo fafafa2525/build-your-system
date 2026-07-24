@@ -414,12 +414,15 @@ async def process_job(app: Application, job: dict) -> None:
         loop = asyncio.get_event_loop()
         items = await loop.run_in_executor(None, run_facebook_scrape, keyword, country, max_pages, sid)
 
-        # Upload ALL numbers (both with and without store). has_store flag is stored
-        # per row so the UI/user can filter later without losing data.
-        qualified = [i for i in items if not i.get("has_store")]
-        with_store = len(items) - len(qualified)
+        # Break down by kind so the user sees WhatsApp-ready mobiles clearly.
+        mobiles   = [i for i in items if i.get("kind") == "mobile"]
+        landlines = [i for i in items if i.get("kind") == "landline"]
+        tollfree  = [i for i in items if i.get("kind") in ("tollfree", "unified")]
+        no_store_mobiles = [i for i in mobiles if not i.get("has_store")]
         log_job(sid, "info",
-                f"تم استخراج {len(items)} رقم — بدون متجر: {len(qualified)} — عندهم متجر: {with_store}")
+                f"استخرج {len(items)} — 📱 جوال: {len(mobiles)} "
+                f"(بدون متجر: {len(no_store_mobiles)}) — 📞 أرضي: {len(landlines)} "
+                f"— ☎️ مجاني/موحد: {len(tollfree)}")
         update_job(sid, progress=80, progress_message=f"رفع {len(items)} رقم...")
 
         result = api("POST", "/api/public/bot/numbers",
@@ -431,30 +434,32 @@ async def process_job(app: Application, job: dict) -> None:
                    numbers_found=total, numbers_new=new_count, finished=True)
         log_job(sid, "info", f"مكتمل — {total} رقم إجمالي، {new_count} جديد")
 
-        # Send file to user
-        if chat_id and new_count > 0:
-            phones_list = result.get("new_phones") or []
-            file_content = "\n".join(phones_list)
+        # WhatsApp file: mobiles only (landlines/toll-free are useless for WhatsApp).
+        mobile_phones = sorted({i["phone"] for i in mobiles})
+        if chat_id:
             await app.bot.send_message(
                 chat_id=chat_id,
                 text=(
                     f"✅ <b>اكتمل البحث</b>\n\n"
                     f"🔎 الكلمة: <code>{keyword}</code>\n"
                     f"🌍 الدولة: {country}\n"
-                    f"📄 صفحات مؤهلة: {len(qualified)}\n"
-                    f"📞 أرقام جديدة: <b>{new_count}</b> / {total}"
+                    f"📄 صفحات مفحوصة: {job.get('pages_found') or '—'}\n"
+                    f"📱 جوال (واتساب): <b>{len(mobile_phones)}</b>\n"
+                    f"   ↳ بدون متجر خارجي: {len(no_store_mobiles)}\n"
+                    f"📞 أرضي: {len(landlines)}\n"
+                    f"☎️ مجاني/موحّد: {len(tollfree)}\n"
+                    f"🆕 جديد في قاعدة البيانات: <b>{new_count}</b>"
                 ),
                 parse_mode=ParseMode.HTML,
             )
-            if file_content:
+            if mobile_phones:
                 await app.bot.send_document(
                     chat_id=chat_id,
-                    document=io.BytesIO(file_content.encode("utf-8")),
-                    filename=f"{keyword}_{country}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-                    caption=f"{new_count} رقم جديد",
+                    document=io.BytesIO("\n".join(mobile_phones).encode("utf-8")),
+                    filename=f"{keyword}_{country}_mobile_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                    caption=f"📱 {len(mobile_phones)} رقم جوال جاهز للواتساب",
                 )
-        elif chat_id:
-            await notify(f"✅ اكتمل البحث — لا توجد أرقام جديدة (كل الأرقام مكررة)")
+
 
     except Exception as e:
         err = str(e)
