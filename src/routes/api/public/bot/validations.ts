@@ -87,7 +87,7 @@ export const Route = createFileRoute("/api/public/bot/validations")({
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { error } = await supabaseAdmin
           .from("contact_validations")
-          .upsert(rows, { onConflict: "contact_type,contact_value,validator" });
+          .upsert(rows as any, { onConflict: "contact_type,contact_value,validator" });
         if (error) return jsonError(error.message, 500);
 
         // If this is a whatsapp validator, mirror the result onto extracted_numbers
