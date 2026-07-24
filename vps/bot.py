@@ -737,6 +737,61 @@ async def cancel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("تم الإلغاء")
     return ConversationHandler.END
 
+# /gmaps flow — Google Maps source
+async def gmaps_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await is_allowed(update.effective_user.id):
+        await update.message.reply_text("❌ غير مصرح لك.")
+        return ConversationHandler.END
+    await update.message.reply_text(
+        "🗺️ <b>بحث Google Maps</b>\n\nأرسل <b>نوع النشاط</b> (مثال: مطاعم، صيدلية، عسل):",
+        parse_mode=ParseMode.HTML,
+    )
+    return GM_CATEGORY
+
+async def gmaps_category(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    ctx.user_data["gm_category"] = update.message.text.strip()
+    await update.message.reply_text("🏙️ أرسل اسم <b>المدينة</b>:", parse_mode=ParseMode.HTML)
+    return GM_CITY
+
+async def gmaps_city(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    ctx.user_data["gm_city"] = update.message.text.strip()
+    kb = [
+        [InlineKeyboardButton(name, callback_data=f"gc:{code}") for code, name in COUNTRIES[i:i+3]]
+        for i in range(0, len(COUNTRIES), 3)
+    ]
+    await update.message.reply_text("🌍 اختر الدولة:", reply_markup=InlineKeyboardMarkup(kb))
+    return GM_COUNTRY
+
+async def gmaps_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    q = update.callback_query
+    await q.answer()
+    country = q.data.split(":")[1]
+    category = ctx.user_data.get("gm_category")
+    city = ctx.user_data.get("gm_city")
+    if not category or not city:
+        await q.edit_message_text("❌ خطأ — ابدأ من جديد بـ /gmaps")
+        return ConversationHandler.END
+    resp = api("POST", "/api/public/bot/jobs", json={
+        "keyword": category,
+        "country": country,
+        "provider": "gmaps",
+        "city": city,
+        "category": category,
+        "telegram_chat_id": q.message.chat.id,
+        "telegram_user_id": q.from_user.id,
+    })
+    _ = resp.get("job", {})
+    await q.edit_message_text(
+        f"✅ تم إنشاء مهمة Google Maps\n\n"
+        f"🏷️ <b>{category}</b>\n"
+        f"🏙️ {city} — 🌍 {country}\n\n"
+        f"سأرسل النتائج فور اكتمال البحث...",
+        parse_mode=ParseMode.HTML,
+    )
+    return ConversationHandler.END
+
+
+
 # /addkey
 async def addkey_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_allowed(update.effective_user.id):
