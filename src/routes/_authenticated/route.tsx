@@ -32,6 +32,15 @@ const NAV = [
 
 function AuthShell() {
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const router = useRouter();
+  const lock = useServerFn(lockDashboard);
+
+  async function handleLock() {
+    await lock();
+    await router.navigate({ to: "/unlock", replace: true });
+    router.invalidate();
+  }
+
 
 
   return (
