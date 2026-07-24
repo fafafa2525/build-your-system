@@ -101,12 +101,70 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_validations: {
+        Row: {
+          attempts: number
+          checked_at: string | null
+          contact_type: string
+          contact_value: string
+          created_at: string
+          error_message: string | null
+          expires_at: string | null
+          id: string
+          result: Json
+          source_search_id: string | null
+          status: string
+          updated_at: string
+          validator: string
+        }
+        Insert: {
+          attempts?: number
+          checked_at?: string | null
+          contact_type: string
+          contact_value: string
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string | null
+          id?: string
+          result?: Json
+          source_search_id?: string | null
+          status?: string
+          updated_at?: string
+          validator: string
+        }
+        Update: {
+          attempts?: number
+          checked_at?: string | null
+          contact_type?: string
+          contact_value?: string
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string | null
+          id?: string
+          result?: Json
+          source_search_id?: string | null
+          status?: string
+          updated_at?: string
+          validator?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_validations_source_search_id_fkey"
+            columns: ["source_search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       extracted_numbers: {
         Row: {
           country: string | null
           created_at: string
+          email: string | null
           first_search_id: string | null
           first_seen_at: string
+          has_website: boolean
           id: string
           is_sent: boolean
           kind: string | null
@@ -119,12 +177,15 @@ export type Database = {
           sent_at: string | null
           times_found: number
           updated_at: string
+          website: string | null
         }
         Insert: {
           country?: string | null
           created_at?: string
+          email?: string | null
           first_search_id?: string | null
           first_seen_at?: string
+          has_website?: boolean
           id?: string
           is_sent?: boolean
           kind?: string | null
@@ -137,12 +198,15 @@ export type Database = {
           sent_at?: string | null
           times_found?: number
           updated_at?: string
+          website?: string | null
         }
         Update: {
           country?: string | null
           created_at?: string
+          email?: string | null
           first_search_id?: string | null
           first_seen_at?: string
+          has_website?: boolean
           id?: string
           is_sent?: boolean
           kind?: string | null
@@ -155,6 +219,7 @@ export type Database = {
           sent_at?: string | null
           times_found?: number
           updated_at?: string
+          website?: string | null
         }
         Relationships: [
           {
@@ -434,6 +499,34 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_valid_validation: {
+        Args: {
+          _contact_type: string
+          _contact_value: string
+          _validator: string
+        }
+        Returns: {
+          attempts: number
+          checked_at: string | null
+          contact_type: string
+          contact_value: string
+          created_at: string
+          error_message: string | null
+          expires_at: string | null
+          id: string
+          result: Json
+          source_search_id: string | null
+          status: string
+          updated_at: string
+          validator: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "contact_validations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
