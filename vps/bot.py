@@ -326,16 +326,16 @@ async def process_job(app: Application, job: dict) -> None:
         loop = asyncio.get_event_loop()
         items = await loop.run_in_executor(None, run_facebook_scrape, keyword, country, max_pages, sid)
 
-        # `items` are already qualified {phone, page_url, page_name, has_store} entries.
-        # Keep only pages WITHOUT an external store (matches the working script's target).
+        # Upload ALL numbers (both with and without store). has_store flag is stored
+        # per row so the UI/user can filter later without losing data.
         qualified = [i for i in items if not i.get("has_store")]
-        excluded = len(items) - len(qualified)
+        with_store = len(items) - len(qualified)
         log_job(sid, "info",
-                f"تم استخراج {len(items)} رقم — مؤهل بدون متجر: {len(qualified)} — مستبعد (عندهم متجر): {excluded}")
-        update_job(sid, progress=80, progress_message=f"رفع {len(qualified)} رقم مؤهل...")
+                f"تم استخراج {len(items)} رقم — بدون متجر: {len(qualified)} — عندهم متجر: {with_store}")
+        update_job(sid, progress=80, progress_message=f"رفع {len(items)} رقم...")
 
         result = api("POST", "/api/public/bot/numbers",
-                     json={"search_id": sid, "country": country, "items": qualified})
+                     json={"search_id": sid, "country": country, "items": items})
         new_count = result.get("new_count", 0)
         total = result.get("total", 0)
 
