@@ -164,7 +164,7 @@ function NumbersPage() {
         `FN:${name}`,
         `TEL;TYPE=CELL:${r.phone}`,
         r.website ? `URL:${r.website}` : "",
-        r.address ? `ADR:;;${(r as any).address};${r.city ?? ""};;;${r.country ?? ""}` : "",
+        r.address ? `ADR:;;${r.address};${r.city ?? ""};;;${r.country ?? ""}` : "",
         r.category ? `NOTE:${r.category}${r.rating ? ` — ⭐${r.rating}` : ""}` : "",
         "END:VCARD",
       ].filter(Boolean).join("\n");
