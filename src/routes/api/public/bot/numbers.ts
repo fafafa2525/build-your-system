@@ -4,6 +4,37 @@ import { checkBotToken, json, jsonError } from "@/lib/bot-auth";
 export const Route = createFileRoute("/api/public/bot/numbers")({
   server: {
     handlers: {
+      // GET recent numbers, optionally filtered by telegram_user_id (from their last search)
+      GET: async ({ request }) => {
+        const err = checkBotToken(request);
+        if (err) return err;
+        const url = new URL(request.url);
+        const tgUid = url.searchParams.get("telegram_user_id");
+        const limit = Math.min(Number(url.searchParams.get("limit") ?? 500), 2000);
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        let searchIds: string[] | null = null;
+        if (tgUid) {
+          const { data: s } = await supabaseAdmin
+            .from("searches")
+            .select("id")
+            .eq("telegram_user_id", Number(tgUid))
+            .eq("status", "completed")
+            .order("finished_at", { ascending: false })
+            .limit(1);
+          if (!s || s.length === 0) return json({ items: [] });
+          searchIds = s.map((r: any) => r.id);
+        }
+        let q = supabaseAdmin
+          .from("extracted_numbers")
+          .select("phone, country, page_url, page_name, kind, last_search_id")
+          .order("last_seen_at", { ascending: false })
+          .limit(limit);
+        if (searchIds) q = q.in("last_search_id", searchIds);
+        const { data, error } = await q;
+        if (error) return jsonError(error.message, 500);
+        return json({ items: data ?? [] });
+      },
+
       // POST bulk upload extracted numbers for a search
       // body: { search_id, country, items: [{ phone, page_url?, page_name? }] }
       // Returns: { total, new_count, existing_count }
