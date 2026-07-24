@@ -151,6 +151,35 @@ DIAL_BY_COUNTRY = {
     "LY": "218", "SD": "249", "FR": "33", "US": "1", "GB": "44", "TR": "90",
 }
 
+# Per-country rules:
+#   local_len: valid lengths of the national number (with leading 0 for countries
+#              that use trunk prefix, without it for Gulf 8-digit numbers).
+#   use_trunk_zero: True when local form starts with 0 (e.g. 05xxxxxxxx).
+#   mobile_prefixes: local prefixes indicating a mobile line (works on WhatsApp).
+COUNTRY_RULES: dict[str, dict] = {
+    "SA": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["05"]},
+    "DZ": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["05", "06", "07"]},
+    "MA": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["06", "07"]},
+    "TN": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["2", "4", "5", "9"]},
+    "EG": {"local_len": [11],     "use_trunk_zero": True,  "mobile_prefixes": ["010", "011", "012", "015"]},
+    "AE": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["050", "052", "054", "055", "056", "058"]},
+    "KW": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["5", "6", "9"]},
+    "QA": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["3", "5", "6", "7"]},
+    "BH": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["3"]},
+    "OM": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["7", "9"]},
+    "JO": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["077", "078", "079"]},
+    "LB": {"local_len": [7, 8],   "use_trunk_zero": False, "mobile_prefixes": ["3", "70", "71", "76", "78", "79", "81"]},
+    "IQ": {"local_len": [11],     "use_trunk_zero": True,  "mobile_prefixes": ["077", "078", "079", "075"]},
+    "SY": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["09"]},
+    "YE": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["07"]},
+    "LY": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["091", "092", "093", "094"]},
+    "SD": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["09"]},
+    "FR": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["06", "07"]},
+    "US": {"local_len": [10],     "use_trunk_zero": False, "mobile_prefixes": []},
+    "GB": {"local_len": [10, 11], "use_trunk_zero": True,  "mobile_prefixes": ["07"]},
+    "TR": {"local_len": [11],     "use_trunk_zero": True,  "mobile_prefixes": ["05"]},
+}
+
 # ---------------- Apify runner ----------------
 
 def get_active_key() -> Optional[dict]:
@@ -159,7 +188,6 @@ def get_active_key() -> Optional[dict]:
     return keys[0] if keys else None
 
 def build_facebook_ads_library_url(keyword: str, country: str) -> str:
-    """Build the public Meta Ads Library search URL Apify expects."""
     params = {
         "active_status": "active",
         "ad_type": "all",
@@ -171,7 +199,6 @@ def build_facebook_ads_library_url(keyword: str, country: str) -> str:
     return f"https://www.facebook.com/ads/library/?{urlencode(params)}"
 
 def extract_page_urls(items: list) -> list[str]:
-    """Pull Facebook page URLs from Ads Library scraper output."""
     urls: set[str] = set()
     for it in items:
         if not isinstance(it, dict):
@@ -195,21 +222,58 @@ def extract_page_urls(items: list) -> list[str]:
             urls.add(u.strip())
     return list(urls)
 
-def normalize_local_phone(raw: str, country_dial: Optional[str]) -> Optional[str]:
-    """Match the working script: strip +/spaces, convert country prefix → local 0xxx."""
+
+def normalize_local_phone(raw: str, country: str) -> Optional[str]:
+    """Strip formatting, drop country dial code, produce national canonical form."""
     if not raw:
         return None
-    s = re.sub(r"[\s\-\+\(\)]", "", str(raw))
+    s = re.sub(r"[\s\-\+\(\)\.]", "", str(raw))
     if s.startswith("00"):
         s = s[2:]
     s = re.sub(r"[^\d]", "", s)
     if not s:
         return None
-    if country_dial and s.startswith(country_dial):
-        s = "0" + s[len(country_dial):]
-    if not s.startswith("0") or len(s) < 9 or len(s) > 12:
+    dial = DIAL_BY_COUNTRY.get(country)
+    rules = COUNTRY_RULES.get(country, {})
+    use_zero = rules.get("use_trunk_zero", True)
+    if dial and s.startswith(dial):
+        s = s[len(dial):]
+        if use_zero and not s.startswith("0"):
+            s = "0" + s
+    if len(s) < 7 or len(s) > 15:
         return None
     return s
+
+
+def classify_phone(local: str, country: str) -> str:
+    """Return one of: mobile | landline | tollfree | unified | invalid."""
+    if not local:
+        return "invalid"
+    if local.startswith(("0800", "800", "9200")):
+        return "tollfree"
+    if local.startswith(("0920", "0900", "0700")):
+        return "unified"
+    rules = COUNTRY_RULES.get(country)
+    if not rules:
+        return "mobile" if 8 <= len(local) <= 12 else "invalid"
+    if len(local) not in rules["local_len"]:
+        return "invalid"
+    for pref in rules["mobile_prefixes"]:
+        if local.startswith(pref):
+            return "mobile"
+    return "landline"
+
+
+def extract_phones_from_text(text: str, country: str) -> list[str]:
+    """Fallback: scan free-text (about/bio) for phone-like sequences."""
+    if not text:
+        return []
+    out: set[str] = set()
+    for m in re.findall(r"\+?\d[\d\s\-\(\)\.]{6,20}\d", str(text)):
+        norm = normalize_local_phone(m, country)
+        if norm:
+            out.add(norm)
+    return list(out)
 
 def call_actor_with_rotation(actor: str, run_input: dict, search_id: str, timeout_secs: int = 900) -> list:
     """Run an Apify actor, rotating keys on quota/auth errors."""
@@ -271,23 +335,47 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
     pages = call_actor_with_rotation("apify/facebook-pages-scraper", pages_input, search_id, timeout_secs=1200)
     log_job(search_id, "info", f"المرحلة 2/2: تم فحص {len(pages)} صفحة")
 
-    dial = DIAL_BY_COUNTRY.get(country)
     results: dict[str, dict] = {}
     for p in pages:
         if not isinstance(p, dict):
             continue
-        phone = normalize_local_phone(p.get("phone") or "", dial)
-        if not phone or phone in results:
-            continue
+        # Collect every phone candidate: the `phone` field + free-text in about/info/bio.
+        candidates: list[str] = []
+        for field in ("phone", "phoneNumber", "phone_number"):
+            v = p.get(field)
+            if v:
+                candidates.append(str(v))
+        for field in ("about", "info", "bio", "description", "categories", "address"):
+            v = p.get(field)
+            if isinstance(v, str) and v:
+                candidates.extend(extract_phones_from_text(v, country))
+            elif isinstance(v, list):
+                candidates.extend(extract_phones_from_text(" ".join(str(x) for x in v), country))
+
         website = p.get("website") or ""
         has_store = bool(website) and "facebook.com" not in str(website).lower()
-        results[phone] = {
-            "phone": phone,
-            "page_url": p.get("pageUrl") or p.get("url") or p.get("facebookUrl"),
-            "page_name": p.get("title") or p.get("pageName") or p.get("name"),
-            "has_store": has_store,
-        }
+        page_url = p.get("pageUrl") or p.get("url") or p.get("facebookUrl")
+        page_name = p.get("title") or p.get("pageName") or p.get("name")
+
+        for raw in candidates:
+            phone = normalize_local_phone(raw, country)
+            if not phone:
+                continue
+            kind = classify_phone(phone, country)
+            if kind == "invalid":
+                continue
+            # Keep the best classification if we already saw this number
+            if phone in results:
+                continue
+            results[phone] = {
+                "phone": phone,
+                "kind": kind,           # mobile | landline | tollfree | unified
+                "page_url": page_url,
+                "page_name": page_name,
+                "has_store": has_store,
+            }
     return list(results.values())
+
 
 # ---------------- Worker loop ----------------
 
@@ -326,12 +414,15 @@ async def process_job(app: Application, job: dict) -> None:
         loop = asyncio.get_event_loop()
         items = await loop.run_in_executor(None, run_facebook_scrape, keyword, country, max_pages, sid)
 
-        # Upload ALL numbers (both with and without store). has_store flag is stored
-        # per row so the UI/user can filter later without losing data.
-        qualified = [i for i in items if not i.get("has_store")]
-        with_store = len(items) - len(qualified)
+        # Break down by kind so the user sees WhatsApp-ready mobiles clearly.
+        mobiles   = [i for i in items if i.get("kind") == "mobile"]
+        landlines = [i for i in items if i.get("kind") == "landline"]
+        tollfree  = [i for i in items if i.get("kind") in ("tollfree", "unified")]
+        no_store_mobiles = [i for i in mobiles if not i.get("has_store")]
         log_job(sid, "info",
-                f"تم استخراج {len(items)} رقم — بدون متجر: {len(qualified)} — عندهم متجر: {with_store}")
+                f"استخرج {len(items)} — 📱 جوال: {len(mobiles)} "
+                f"(بدون متجر: {len(no_store_mobiles)}) — 📞 أرضي: {len(landlines)} "
+                f"— ☎️ مجاني/موحد: {len(tollfree)}")
         update_job(sid, progress=80, progress_message=f"رفع {len(items)} رقم...")
 
         result = api("POST", "/api/public/bot/numbers",
@@ -343,30 +434,32 @@ async def process_job(app: Application, job: dict) -> None:
                    numbers_found=total, numbers_new=new_count, finished=True)
         log_job(sid, "info", f"مكتمل — {total} رقم إجمالي، {new_count} جديد")
 
-        # Send file to user
-        if chat_id and new_count > 0:
-            phones_list = result.get("new_phones") or []
-            file_content = "\n".join(phones_list)
+        # WhatsApp file: mobiles only (landlines/toll-free are useless for WhatsApp).
+        mobile_phones = sorted({i["phone"] for i in mobiles})
+        if chat_id:
             await app.bot.send_message(
                 chat_id=chat_id,
                 text=(
                     f"✅ <b>اكتمل البحث</b>\n\n"
                     f"🔎 الكلمة: <code>{keyword}</code>\n"
                     f"🌍 الدولة: {country}\n"
-                    f"📄 صفحات مؤهلة: {len(qualified)}\n"
-                    f"📞 أرقام جديدة: <b>{new_count}</b> / {total}"
+                    f"📄 صفحات مفحوصة: {job.get('pages_found') or '—'}\n"
+                    f"📱 جوال (واتساب): <b>{len(mobile_phones)}</b>\n"
+                    f"   ↳ بدون متجر خارجي: {len(no_store_mobiles)}\n"
+                    f"📞 أرضي: {len(landlines)}\n"
+                    f"☎️ مجاني/موحّد: {len(tollfree)}\n"
+                    f"🆕 جديد في قاعدة البيانات: <b>{new_count}</b>"
                 ),
                 parse_mode=ParseMode.HTML,
             )
-            if file_content:
+            if mobile_phones:
                 await app.bot.send_document(
                     chat_id=chat_id,
-                    document=io.BytesIO(file_content.encode("utf-8")),
-                    filename=f"{keyword}_{country}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-                    caption=f"{new_count} رقم جديد",
+                    document=io.BytesIO("\n".join(mobile_phones).encode("utf-8")),
+                    filename=f"{keyword}_{country}_mobile_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                    caption=f"📱 {len(mobile_phones)} رقم جوال جاهز للواتساب",
                 )
-        elif chat_id:
-            await notify(f"✅ اكتمل البحث — لا توجد أرقام جديدة (كل الأرقام مكررة)")
+
 
     except Exception as e:
         err = str(e)

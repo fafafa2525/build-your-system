@@ -13,7 +13,7 @@ export const Route = createFileRoute("/api/public/bot/numbers")({
         const body = (await request.json()) as {
           search_id: string;
           country?: string;
-          items: Array<{ phone: string; page_url?: string; page_name?: string }>;
+          items: Array<{ phone: string; kind?: string; page_url?: string; page_name?: string; has_store?: boolean }>;
         };
         if (!body.search_id || !Array.isArray(body.items)) return jsonError("search_id and items required");
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -50,6 +50,7 @@ export const Route = createFileRoute("/api/public/bot/numbers")({
             toInsert.push({
               phone: it.phone,
               country: body.country ?? null,
+              kind: it.kind ?? null,
               times_found: 1,
               first_seen_at: now,
               last_seen_at: now,
