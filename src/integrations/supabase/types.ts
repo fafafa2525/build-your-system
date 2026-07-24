@@ -109,6 +109,7 @@ export type Database = {
           first_seen_at: string
           id: string
           is_sent: boolean
+          kind: string | null
           last_search_id: string | null
           last_seen_at: string
           notes: string | null
@@ -126,6 +127,7 @@ export type Database = {
           first_seen_at?: string
           id?: string
           is_sent?: boolean
+          kind?: string | null
           last_search_id?: string | null
           last_seen_at?: string
           notes?: string | null
@@ -143,6 +145,7 @@ export type Database = {
           first_seen_at?: string
           id?: string
           is_sent?: boolean
+          kind?: string | null
           last_search_id?: string | null
           last_seen_at?: string
           notes?: string | null
