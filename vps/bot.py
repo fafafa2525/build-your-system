@@ -151,6 +151,35 @@ DIAL_BY_COUNTRY = {
     "LY": "218", "SD": "249", "FR": "33", "US": "1", "GB": "44", "TR": "90",
 }
 
+# Per-country rules:
+#   local_len: valid lengths of the national number (with leading 0 for countries
+#              that use trunk prefix, without it for Gulf 8-digit numbers).
+#   use_trunk_zero: True when local form starts with 0 (e.g. 05xxxxxxxx).
+#   mobile_prefixes: local prefixes indicating a mobile line (works on WhatsApp).
+COUNTRY_RULES: dict[str, dict] = {
+    "SA": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["05"]},
+    "DZ": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["05", "06", "07"]},
+    "MA": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["06", "07"]},
+    "TN": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["2", "4", "5", "9"]},
+    "EG": {"local_len": [11],     "use_trunk_zero": True,  "mobile_prefixes": ["010", "011", "012", "015"]},
+    "AE": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["050", "052", "054", "055", "056", "058"]},
+    "KW": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["5", "6", "9"]},
+    "QA": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["3", "5", "6", "7"]},
+    "BH": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["3"]},
+    "OM": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["7", "9"]},
+    "JO": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["077", "078", "079"]},
+    "LB": {"local_len": [7, 8],   "use_trunk_zero": False, "mobile_prefixes": ["3", "70", "71", "76", "78", "79", "81"]},
+    "IQ": {"local_len": [11],     "use_trunk_zero": True,  "mobile_prefixes": ["077", "078", "079", "075"]},
+    "SY": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["09"]},
+    "YE": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["07"]},
+    "LY": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["091", "092", "093", "094"]},
+    "SD": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["09"]},
+    "FR": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["06", "07"]},
+    "US": {"local_len": [10],     "use_trunk_zero": False, "mobile_prefixes": []},
+    "GB": {"local_len": [10, 11], "use_trunk_zero": True,  "mobile_prefixes": ["07"]},
+    "TR": {"local_len": [11],     "use_trunk_zero": True,  "mobile_prefixes": ["05"]},
+}
+
 # ---------------- Apify runner ----------------
 
 def get_active_key() -> Optional[dict]:
@@ -159,7 +188,6 @@ def get_active_key() -> Optional[dict]:
     return keys[0] if keys else None
 
 def build_facebook_ads_library_url(keyword: str, country: str) -> str:
-    """Build the public Meta Ads Library search URL Apify expects."""
     params = {
         "active_status": "active",
         "ad_type": "all",
@@ -171,7 +199,6 @@ def build_facebook_ads_library_url(keyword: str, country: str) -> str:
     return f"https://www.facebook.com/ads/library/?{urlencode(params)}"
 
 def extract_page_urls(items: list) -> list[str]:
-    """Pull Facebook page URLs from Ads Library scraper output."""
     urls: set[str] = set()
     for it in items:
         if not isinstance(it, dict):
@@ -195,21 +222,61 @@ def extract_page_urls(items: list) -> list[str]:
             urls.add(u.strip())
     return list(urls)
 
-def normalize_local_phone(raw: str, country_dial: Optional[str]) -> Optional[str]:
-    """Match the working script: strip +/spaces, convert country prefix → local 0xxx."""
+
+def normalize_local_phone(raw: str, country: str) -> Optional[str]:
+    """Strip formatting, drop country dial code, produce national canonical form."""
     if not raw:
         return None
-    s = re.sub(r"[\s\-\+\(\)]", "", str(raw))
+    s = re.sub(r"[\s\-\+\(\)\.]", "", str(raw))
     if s.startswith("00"):
         s = s[2:]
     s = re.sub(r"[^\d]", "", s)
     if not s:
         return None
-    if country_dial and s.startswith(country_dial):
-        s = "0" + s[len(country_dial):]
-    if not s.startswith("0") or len(s) < 9 or len(s) > 12:
+    dial = DIAL_BY_COUNTRY.get(country)
+    rules = COUNTRY_RULES.get(country, {})
+    use_zero = rules.get("use_trunk_zero", True)
+    if dial and s.startswith(dial):
+        s = s[len(dial):]
+        if use_zero and not s.startswith("0"):
+            s = "0" + s
+    if len(s) < 7 or len(s) > 15:
         return None
     return s
+
+
+def classify_phone(local: str, country: str) -> str:
+    """Return one of: mobile | landline | tollfree | unified | invalid."""
+    if not local:
+        return "invalid"
+    # Toll-free / unified numbers common across Arab countries
+    if local.startswith(("0800", "800", "0900", "0920", "0700", "0500")):
+        # Note: 05 is real mobile in SA/DZ/etc — handle after checking length
+        if local.startswith(("0800", "800")):
+            return "tollfree"
+        if local.startswith(("0900", "0920", "0700")):
+            return "unified"
+    rules = COUNTRY_RULES.get(country)
+    if not rules:
+        return "mobile" if 8 <= len(local) <= 12 else "invalid"
+    if len(local) not in rules["local_len"]:
+        return "invalid"
+    for pref in rules["mobile_prefixes"]:
+        if local.startswith(pref):
+            return "mobile"
+    return "landline"
+
+
+def extract_phones_from_text(text: str, country: str) -> list[str]:
+    """Fallback: scan free-text (about/bio) for phone-like sequences."""
+    if not text:
+        return []
+    out: set[str] = set()
+    for m in re.findall(r"\+?\d[\d\s\-\(\)\.]{6,20}\d", str(text)):
+        norm = normalize_local_phone(m, country)
+        if norm:
+            out.add(norm)
+    return list(out)
 
 def call_actor_with_rotation(actor: str, run_input: dict, search_id: str, timeout_secs: int = 900) -> list:
     """Run an Apify actor, rotating keys on quota/auth errors."""
