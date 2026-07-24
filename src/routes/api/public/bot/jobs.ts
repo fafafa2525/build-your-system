@@ -14,8 +14,12 @@ export const Route = createFileRoute("/api/public/bot/jobs")({
           max_pages?: number;
           telegram_chat_id?: number;
           telegram_user_id?: number;
+          provider?: string;
+          city?: string;
+          category?: string;
         };
         if (!body.keyword || !body.country) return jsonError("keyword and country required");
+        const provider = body.provider || "facebook";
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
         // Daily rate limit per telegram user (10/day)
@@ -42,12 +46,16 @@ export const Route = createFileRoute("/api/public/bot/jobs")({
             telegram_user_id: body.telegram_user_id ?? null,
             source: "telegram",
             status: "pending",
-          })
+            provider,
+            city: body.city ?? null,
+            category: body.category ?? null,
+          } as any)
           .select()
           .single();
         if (error) return jsonError(error.message, 500);
         return json({ job: data });
       },
+
 
       // Worker polls: GET ?next=1 claims next pending job
       GET: async ({ request }) => {
