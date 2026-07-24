@@ -75,6 +75,15 @@ function AuthShell() {
             );
           })}
         </nav>
+        <div className="p-3 border-t border-sidebar-border">
+          <button
+            onClick={handleLock}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-sidebar-accent transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            قفل الجلسة
+          </button>
+        </div>
       </aside>
 
       <main className="flex-1 overflow-x-hidden">
@@ -82,6 +91,7 @@ function AuthShell() {
         <div className="md:hidden sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border p-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Radar className="w-5 h-5 text-primary" />
+
             <span className="font-bold">AdsBot</span>
           </div>
         </div>
