@@ -1,16 +1,24 @@
-import { createFileRoute, Outlet, Link, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Outlet, Link, useRouterState, useRouter, redirect } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Radar,
   LayoutDashboard,
-  Search,
   Phone,
   KeyRound,
   Settings,
   History,
+  LogOut,
 } from "lucide-react";
+import { isUnlocked, lockDashboard } from "@/lib/gate.functions";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
+  beforeLoad: async ({ location }) => {
+    const res = await isUnlocked();
+    if (!res.unlocked) {
+      throw redirect({ to: "/unlock", search: { redirect: location.href } });
+    }
+  },
   component: AuthShell,
 });
 
