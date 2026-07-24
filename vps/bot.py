@@ -882,9 +882,10 @@ async def validate_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     err_n = sum(1 for v in results.values() if v.get("status") == "error")
 
     if not valid_pairs:
-        await status_msg.edit_text(
-            f"انتهى التحقق: 0 صالح / {invalid_n} غير مسجّل / {err_n} خطأ."
-        )
+        msg = f"انتهى التحقق: 0 صالح / {invalid_n} غير مسجّل / {err_n} خطأ."
+        if last_err:
+            msg += f"\n\n⚠️ سبب الأخطاء:\n{last_err[:400]}"
+        await status_msg.edit_text(msg)
         return
 
     # Build TSV of valid-only
