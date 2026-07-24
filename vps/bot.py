@@ -442,23 +442,49 @@ async def process_job(app: Application, job: dict) -> None:
     max_pages = job.get("max_pages") or 100
     chat_id = job.get("telegram_chat_id")
 
-    async def notify(text: str):
-        if chat_id:
-            try:
-                await app.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
-            except Exception:
-                pass
+    # A single "live progress" message we keep editing as work advances.
+    progress_msg = None
+    if chat_id:
+        try:
+            progress_msg = await app.bot.send_message(
+                chat_id=chat_id,
+                text=f"🚀 <b>بدأ البحث</b>\n🔎 {keyword} | 🌍 {country}\n⏳ التحضير...",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            pass
+
+    loop = asyncio.get_event_loop()
+    last_edit = {"text": "", "at": 0.0}
+    import time as _time
+
+    def push_progress(text: str):
+        """Thread-safe: schedules a telegram edit from the worker thread."""
+        if not progress_msg:
+            return
+        now = _time.time()
+        if text == last_edit["text"] or now - last_edit["at"] < 3:
+            return
+        last_edit["text"] = text
+        last_edit["at"] = now
+        full = (f"⚙️ <b>{keyword}</b> | 🌍 {country}\n\n{text}")
+        try:
+            asyncio.run_coroutine_threadsafe(
+                app.bot.edit_message_text(chat_id=chat_id, message_id=progress_msg.message_id,
+                                          text=full, parse_mode=ParseMode.HTML),
+                loop,
+            )
+        except Exception:
+            pass
 
     try:
         log_job(sid, "info", f"بدء البحث: '{keyword}' — {country}")
-        await notify(f"🚀 بدأ البحث عن <b>{keyword}</b> في <b>{country}</b>...")
         update_job(sid, progress=5, progress_message="جاري تشغيل Apify...")
 
-        # Run in a thread so we don't block the event loop
-        loop = asyncio.get_event_loop()
-        items = await loop.run_in_executor(None, run_facebook_scrape, keyword, country, max_pages, sid)
+        items = await loop.run_in_executor(
+            None, run_facebook_scrape, keyword, country, max_pages, sid, push_progress
+        )
 
-        # Break down by kind so the user sees WhatsApp-ready mobiles clearly.
         mobiles   = [i for i in items if i.get("kind") == "mobile"]
         landlines = [i for i in items if i.get("kind") == "landline"]
         tollfree  = [i for i in items if i.get("kind") in ("tollfree", "unified")]
@@ -467,7 +493,8 @@ async def process_job(app: Application, job: dict) -> None:
                 f"استخرج {len(items)} — 📱 جوال: {len(mobiles)} "
                 f"(بدون متجر: {len(no_store_mobiles)}) — 📞 أرضي: {len(landlines)} "
                 f"— ☎️ مجاني/موحد: {len(tollfree)}")
-        update_job(sid, progress=80, progress_message=f"رفع {len(items)} رقم...")
+        update_job(sid, progress=90, progress_message=f"رفع {len(items)} رقم...")
+        push_progress(f"💾 رفع {len(items)} رقم إلى قاعدة البيانات...")
 
         result = api("POST", "/api/public/bot/numbers",
                      json={"search_id": sid, "country": country, "items": items})
@@ -478,39 +505,53 @@ async def process_job(app: Application, job: dict) -> None:
                    numbers_found=total, numbers_new=new_count, finished=True)
         log_job(sid, "info", f"مكتمل — {total} رقم إجمالي، {new_count} جديد")
 
-        # WhatsApp file: mobiles only (landlines/toll-free are useless for WhatsApp).
-        mobile_phones = sorted({i["phone"] for i in mobiles})
+        # Build output file: phone + page URL + page name (TSV, opens as table in Excel).
+        header = "phone\tpage_url\tpage_name\thas_store\n"
+        lines = [
+            f"{i['phone']}\t{i.get('page_url') or ''}\t{(i.get('page_name') or '').replace(chr(9),' ')}\t{'1' if i.get('has_store') else '0'}"
+            for i in mobiles
+        ]
+        tsv_bytes = (header + "\n".join(lines)).encode("utf-8")
+
         if chat_id:
-            await app.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    f"✅ <b>اكتمل البحث</b>\n\n"
-                    f"🔎 الكلمة: <code>{keyword}</code>\n"
-                    f"🌍 الدولة: {country}\n"
-                    f"📄 صفحات مفحوصة: {job.get('pages_found') or '—'}\n"
-                    f"📱 جوال (واتساب): <b>{len(mobile_phones)}</b>\n"
-                    f"   ↳ بدون متجر خارجي: {len(no_store_mobiles)}\n"
-                    f"📞 أرضي: {len(landlines)}\n"
-                    f"☎️ مجاني/موحّد: {len(tollfree)}\n"
-                    f"🆕 جديد في قاعدة البيانات: <b>{new_count}</b>"
-                ),
-                parse_mode=ParseMode.HTML,
+            summary = (
+                f"✅ <b>اكتمل البحث</b>\n\n"
+                f"🔎 الكلمة: <code>{keyword}</code>\n"
+                f"🌍 الدولة: {country}\n"
+                f"📄 صفحات مفحوصة: {len(items) and (job.get('pages_found') or '—')}\n"
+                f"📱 جوال (واتساب): <b>{len(mobiles)}</b>\n"
+                f"   ↳ بدون متجر خارجي: {len(no_store_mobiles)}\n"
+                f"📞 أرضي: {len(landlines)}\n"
+                f"☎️ مجاني/موحّد: {len(tollfree)}\n"
+                f"🆕 جديد في قاعدة البيانات: <b>{new_count}</b>"
             )
-            if mobile_phones:
+            try:
+                if progress_msg:
+                    await app.bot.edit_message_text(chat_id=chat_id, message_id=progress_msg.message_id,
+                                                    text=summary, parse_mode=ParseMode.HTML)
+                else:
+                    await app.bot.send_message(chat_id=chat_id, text=summary, parse_mode=ParseMode.HTML)
+            except Exception:
+                await app.bot.send_message(chat_id=chat_id, text=summary, parse_mode=ParseMode.HTML)
+            if mobiles:
                 await app.bot.send_document(
                     chat_id=chat_id,
-                    document=io.BytesIO("\n".join(mobile_phones).encode("utf-8")),
-                    filename=f"{keyword}_{country}_mobile_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-                    caption=f"📱 {len(mobile_phones)} رقم جوال جاهز للواتساب",
+                    document=io.BytesIO(tsv_bytes),
+                    filename=f"{keyword}_{country}_{datetime.now().strftime('%Y%m%d_%H%M')}.tsv",
+                    caption=f"📱 {len(mobiles)} رقم جوال + روابط الصفحات",
                 )
-
 
     except Exception as e:
         err = str(e)
         log.exception("Job %s failed", sid)
         log_job(sid, "error", err)
         update_job(sid, status="failed", error_message=err[:500], finished=True)
-        await notify(f"❌ فشل البحث: {err[:200]}")
+        if chat_id:
+            try:
+                await app.bot.send_message(chat_id=chat_id, text=f"❌ فشل البحث: {err[:200]}")
+            except Exception:
+                pass
+
 
 # ---------------- Heartbeat loop ----------------
 
