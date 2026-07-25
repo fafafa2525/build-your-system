@@ -63,6 +63,8 @@ export const Route = createFileRoute("/api/public/bot/numbers")({
             latitude?: number;
             longitude?: number;
             google_maps_url?: string;
+            email?: string;
+            claim_this_business?: boolean;
           }>;
         };
         if (!body.search_id || !Array.isArray(body.items)) return jsonError("search_id and items required");
@@ -81,7 +83,7 @@ export const Route = createFileRoute("/api/public/bot/numbers")({
         const phones = cleanItems.map((i) => i.phone);
         const { data: existing } = await supabaseAdmin
           .from("extracted_numbers")
-          .select("id, phone, times_found, sources, business_name, category, address, city, rating, reviews_count, latitude, longitude, google_maps_url, website, page_url, page_name")
+          .select("id, phone, times_found, sources, business_name, category, address, city, rating, reviews_count, latitude, longitude, google_maps_url, website, page_url, page_name, email, claim_this_business")
           .in("phone", phones);
         const existingMap = new Map((existing ?? []).map((e: any) => [e.phone, e]));
 
@@ -119,6 +121,8 @@ export const Route = createFileRoute("/api/public/bot/numbers")({
             fillIfEmpty("website", it.website);
             fillIfEmpty("page_url", it.page_url);
             fillIfEmpty("page_name", it.page_name);
+            fillIfEmpty("email", it.email);
+            fillIfEmpty("claim_this_business", it.claim_this_business);
             toUpdate.push({ id: ex.id, patch });
             junction.push({ search_id: body.search_id, number_id: ex.id, is_new_at_time: false });
           } else {
@@ -146,6 +150,8 @@ export const Route = createFileRoute("/api/public/bot/numbers")({
               latitude: it.latitude ?? null,
               longitude: it.longitude ?? null,
               google_maps_url: it.google_maps_url ?? null,
+              email: it.email ?? null,
+              claim_this_business: it.claim_this_business ?? null,
             });
           }
         }
