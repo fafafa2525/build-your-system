@@ -345,10 +345,12 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
     search_url = build_facebook_ads_library_url(keyword, country)
     log_job(search_id, "info", f"المرحلة 1/2: فتح مكتبة الإعلانات — {search_url}")
     if progress_cb: progress_cb("🔗 المرحلة 1/2: فتح مكتبة إعلانات فيسبوك...")
+    # One page can run many ads → oversample ads to get more unique pages.
+    ads_target = max(max_pages * 3, max_pages)
     ads_input = {
         "urls": [{"url": search_url}],
-        "count": max_pages,
-        "limitPerSource": max_pages,
+        "count": ads_target,
+        "limitPerSource": ads_target,
         "scrapeAdDetails": False,
     }
 
