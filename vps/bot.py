@@ -405,6 +405,12 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
         has_store = bool(website) and "facebook.com" not in str(website).lower()
         page_url = p.get("pageUrl") or p.get("url") or p.get("facebookUrl")
         page_name = p.get("title") or p.get("pageName") or p.get("name")
+        email = p.get("email") or p.get("emailAddress")
+        if not email:
+            for field in ("emails", "contactEmails"):
+                v = p.get(field)
+                if isinstance(v, list) and v:
+                    email = str(v[0]); break
 
         for raw in candidates:
             phone = normalize_local_phone(raw, country)
@@ -421,6 +427,8 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
                 "page_url": page_url,
                 "page_name": page_name,
                 "has_store": has_store,
+                "website": website or None,
+                "email": email or None,
             }
     return list(results.values())
 
