@@ -345,10 +345,12 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
     search_url = build_facebook_ads_library_url(keyword, country)
     log_job(search_id, "info", f"المرحلة 1/2: فتح مكتبة الإعلانات — {search_url}")
     if progress_cb: progress_cb("🔗 المرحلة 1/2: فتح مكتبة إعلانات فيسبوك...")
+    # One page can run many ads → oversample ads to get more unique pages.
+    ads_target = max(max_pages * 3, max_pages)
     ads_input = {
         "urls": [{"url": search_url}],
-        "count": max_pages,
-        "limitPerSource": max_pages,
+        "count": ads_target,
+        "limitPerSource": ads_target,
         "scrapeAdDetails": False,
     }
 
@@ -403,6 +405,12 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
         has_store = bool(website) and "facebook.com" not in str(website).lower()
         page_url = p.get("pageUrl") or p.get("url") or p.get("facebookUrl")
         page_name = p.get("title") or p.get("pageName") or p.get("name")
+        email = p.get("email") or p.get("emailAddress")
+        if not email:
+            for field in ("emails", "contactEmails"):
+                v = p.get(field)
+                if isinstance(v, list) and v:
+                    email = str(v[0]); break
 
         for raw in candidates:
             phone = normalize_local_phone(raw, country)
@@ -419,6 +427,8 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
                 "page_url": page_url,
                 "page_name": page_name,
                 "has_store": has_store,
+                "website": website or None,
+                "email": email or None,
             }
     return list(results.values())
 
@@ -479,6 +489,17 @@ def run_gmaps_scrape(category: str, city: str, country: str, max_results: int,
         lng = (p.get("location") or {}).get("lng") if isinstance(p.get("location"), dict) else p.get("longitude")
         website = p.get("website") or p.get("webUrl")
         gmaps_url = p.get("url") or p.get("googleMapsUrl")
+        email = None
+        for field in ("emails", "contactEmails"):
+            v = p.get(field)
+            if isinstance(v, list) and v:
+                email = str(v[0]); break
+        if not email:
+            v = p.get("email")
+            if v: email = str(v)
+        claim_flag = p.get("claimThisBusiness")
+        if claim_flag is None:
+            claim_flag = p.get("claim_this_business")
 
         for raw in candidates:
             phone = normalize_local_phone(raw, country)
@@ -503,6 +524,8 @@ def run_gmaps_scrape(category: str, city: str, country: str, max_results: int,
                 "google_maps_url": gmaps_url,
                 "website": website,
                 "page_name": biz_name,
+                "email": email,
+                "claim_this_business": bool(claim_flag) if claim_flag is not None else None,
             }
     return list(results.values())
 
