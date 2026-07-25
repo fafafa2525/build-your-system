@@ -28,7 +28,7 @@ export const Route = createFileRoute("/api/public/bot/numbers")({
         }
         let q = supabaseAdmin
           .from("extracted_numbers")
-          .select("phone, country, page_url, page_name, kind, last_search_id, sources, business_name, category, city, rating, reviews_count, google_maps_url, website")
+          .select("phone, country, page_url, page_name, kind, last_search_id, sources, business_name, category, city, rating, reviews_count, google_maps_url, website, email, claim_this_business")
           .order("last_seen_at", { ascending: false })
           .limit(limit);
         if (searchIds) q = q.in("last_search_id", searchIds);
