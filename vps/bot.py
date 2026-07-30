@@ -324,7 +324,7 @@ def call_actor_with_rotation(actor: str, run_input: dict, search_id: str,
         except Exception as e:
             msg = str(e)
             log_job(search_id, "warn", f"خطأ في {key['label']}: {msg[:200]}")
-            if any(t in msg.lower() for t in ["402", "429", "insufficient", "usage limit", "hard limit", "monthly usage", "monthly-usage", "unauthorized", "payment", "quota"]):
+            if any(t in msg.lower() for t in ["402", "429", "insufficient", "usage limit", "hard limit", "monthly usage", "monthly-usage", "unauthorized", "payment", "quota", "maximum charged results", "charged results must be greater"]):
                 api("PATCH", "/api/public/bot/keys",
                     json={"id": key["id"], "status": "exhausted", "last_error": msg[:500]})
                 key = get_active_key()
