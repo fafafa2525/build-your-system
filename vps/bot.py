@@ -162,7 +162,7 @@ COUNTRY_RULES: dict[str, dict] = {
     "MA": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["06", "07"]},
     "TN": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["2", "4", "5", "9"]},
     "EG": {"local_len": [11],     "use_trunk_zero": True,  "mobile_prefixes": ["010", "011", "012", "015"]},
-    "AE": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["050", "052", "054", "055", "056", "058"]},
+    "AE": {"local_len": [9, 10], "use_trunk_zero": True,  "mobile_prefixes": ["050", "052", "054", "055", "056", "058"]},
     "KW": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["5", "6", "9"]},
     "QA": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["3", "5", "6", "7"]},
     "BH": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["3"]},
