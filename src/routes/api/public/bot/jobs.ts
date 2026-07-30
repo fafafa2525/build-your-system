@@ -17,6 +17,7 @@ export const Route = createFileRoute("/api/public/bot/jobs")({
           provider?: string;
           city?: string;
           category?: string;
+          status?: string;
         };
         if (!body.keyword || !body.country) return jsonError("keyword and country required");
         const provider = body.provider || "facebook";
