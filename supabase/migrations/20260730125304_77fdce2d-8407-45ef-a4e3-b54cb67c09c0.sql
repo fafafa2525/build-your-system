@@ -1,0 +1,1 @@
+DELETE FROM public.health_status WHERE service = 'test';

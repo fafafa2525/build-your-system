@@ -142,22 +142,7 @@ async def is_allowed(user_id: int) -> bool:
 
 # ---------------- Phone extraction (adapted from user's script) ----------------
 
-PHONE_REGEX = re.compile(r"(?:(?:00|\+)?[\s\-]?)?(\d[\d\s\-]{7,20}\d)")
-
-def extract_phones_from_text(text: str, country_dial: Optional[str] = None) -> list[str]:
-    """Extract phone-like sequences and normalize."""
-    if not text:
-        return []
-    out = set()
-    for m in PHONE_REGEX.findall(text):
-        digits = re.sub(r"[^\d]", "", m)
-        if len(digits) < 8 or len(digits) > 15:
-            continue
-        # Strip country-dial prefix so all numbers for the same country compare equal
-        if country_dial and digits.startswith(country_dial):
-            digits = "0" + digits[len(country_dial):]
-        out.add(digits)
-    return list(out)
+# NOTE: extract_phones_from_text is defined further below (country-aware version).
 
 DIAL_BY_COUNTRY = {
     "DZ": "213", "MA": "212", "TN": "216", "EG": "20", "SA": "966",
@@ -177,7 +162,7 @@ COUNTRY_RULES: dict[str, dict] = {
     "MA": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["06", "07"]},
     "TN": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["2", "4", "5", "9"]},
     "EG": {"local_len": [11],     "use_trunk_zero": True,  "mobile_prefixes": ["010", "011", "012", "015"]},
-    "AE": {"local_len": [10],     "use_trunk_zero": True,  "mobile_prefixes": ["050", "052", "054", "055", "056", "058"]},
+    "AE": {"local_len": [9, 10], "use_trunk_zero": True,  "mobile_prefixes": ["050", "052", "054", "055", "056", "058"]},
     "KW": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["5", "6", "9"]},
     "QA": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["3", "5", "6", "7"]},
     "BH": {"local_len": [8],      "use_trunk_zero": False, "mobile_prefixes": ["3"]},
@@ -312,7 +297,6 @@ def call_actor_with_rotation(actor: str, run_input: dict, search_id: Optional[st
             while _time.time() < deadline:
                 info = client.run(run_id).get()
                 status = info.get("status", "")
-                stats = info.get("stats") or {}
                 # cheap item count via dataset info
                 ds_info = client.dataset(dataset_id).get() or {}
                 item_count = ds_info.get("itemCount", 0)
@@ -335,8 +319,23 @@ def call_actor_with_rotation(actor: str, run_input: dict, search_id: Optional[st
             return items
         except Exception as e:
             msg = str(e)
+            low = msg.lower()
             log_job(search_id, "warn", f"خطأ في {key['label']}: {msg[:200]}")
-            if any(t in msg.lower() for t in ["402", "429", "insufficient", "usage limit", "hard limit", "monthly usage", "monthly-usage", "unauthorized", "payment", "quota", "maximum charged results", "charged results must be greater"]):
+
+            # Paid/rental actors: rotating keys will not help — explain clearly.
+            if any(t in low for t in ["rent a paid actor", "free trial has expired", "must rent"]):
+                raise RuntimeError(
+                    "هذا الـ Actor مدفوع ويحتاج اشتراك/استئجار من حساب Apify. "
+                    "اختر Actor مجاني أو استأجره من حسابك ثم أعد المحاولة."
+                )
+
+            # Quota / billing / auth problems → mark key exhausted and rotate.
+            if any(t in low for t in [
+                "402", "429", "insufficient", "usage limit", "hard limit", "monthly usage",
+                "monthly-usage", "unauthorized", "invalid token", "payment", "quota",
+                "remaining usage", "exceed your remaining", "not enough credit",
+                "maximum charged results", "charged results must be greater",
+            ]):
                 api("PATCH", "/api/public/bot/keys",
                     json={"id": key["id"], "status": "exhausted", "last_error": msg[:500]})
                 key = get_active_key()
@@ -346,6 +345,7 @@ def call_actor_with_rotation(actor: str, run_input: dict, search_id: Optional[st
                 continue
             raise
     raise RuntimeError("فشل بعد استنفاد كل المفاتيح")
+
 
 def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: str,
                         progress_cb=None) -> list[dict]:
@@ -846,7 +846,7 @@ async def search_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         "telegram_chat_id": q.message.chat.id,
         "telegram_user_id": q.from_user.id,
     })
-    job = resp.get("job", {})
+    resp.get("job", {})
     await q.edit_message_text(
         f"✅ <b>تم إنشاء المهمة</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
