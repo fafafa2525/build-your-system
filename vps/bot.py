@@ -1122,7 +1122,7 @@ def validate_whatsapp_batch(numbers_e164: list[str], search_id: Optional[str] = 
 async def validate_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """/validate — validate the phone numbers from the caller's most recent completed search."""
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return
     uid = update.effective_user.id
     log.info("validate_cmd: fetching numbers for telegram_user_id=%s", uid)
@@ -1132,19 +1132,19 @@ async def validate_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                    params={"telegram_user_id": uid, "limit": 500})
     except Exception as e:
         log.warning("validate_cmd: numbers fetch failed: %s", e)
-        await update.message.reply_text(f"⚠️ فشل جلب الأرقام: {e}")
+        await update.effective_message.reply_text(f"⚠️ فشل جلب الأرقام: {e}")
         return
     items = resp.get("items") or []
     log.info("validate_cmd: got %d items from /numbers endpoint", len(items))
     if not items:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"لم أجد أرقاماً حديثة لهذا الحساب (uid={uid}).\n"
             "شغّل /search أولاً وانتظر اكتماله ثم استخدم /validate.\n"
             "لو لسّا يظهر فارغ بعد بحث ناجح: انشر آخر تحديثات لوحة التحكم من زر Publish."
         )
         return
 
-    status_msg = await update.message.reply_text(
+    status_msg = await update.effective_message.reply_text(
         f"🔎 جاري التحقق من {len(items)} رقم عبر واتساب…"
     )
 
