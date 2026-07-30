@@ -46,7 +46,7 @@ export const Route = createFileRoute("/api/public/bot/jobs")({
             telegram_chat_id: body.telegram_chat_id ?? null,
             telegram_user_id: body.telegram_user_id ?? null,
             source: "telegram",
-            status: "pending",
+            status: body.status ?? "pending",
             provider,
             city: body.city ?? null,
             category: body.category ?? null,
