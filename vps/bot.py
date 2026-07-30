@@ -834,32 +834,45 @@ async def search_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     })
     job = resp.get("job", {})
     await q.edit_message_text(
-        f"✅ تم إنشاء المهمة\n\n"
-        f"🔎 <b>{keyword}</b>\n"
-        f"🌍 {country}\n\n"
-        f"سأرسل النتائج فور اكتمال البحث...",
+        f"✅ <b>تم إنشاء المهمة</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔎 الكلمة: <b>{keyword}</b>\n"
+        f"🌍 الدولة: {country}\n"
+        f"⏳ الحالة: قيد التنفيذ…\n\n"
+        f"سأرسل النتائج فور اكتمال البحث.",
         parse_mode=ParseMode.HTML,
+        reply_markup=back_kb(),
     )
     return ConversationHandler.END
 
 async def cancel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("تم الإلغاء")
+    await update.effective_message.reply_text(
+        "تم الإلغاء ✅", reply_markup=back_kb()
+    )
     return ConversationHandler.END
 
 # /gmaps flow — Google Maps source
 async def gmaps_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return ConversationHandler.END
-    await update.message.reply_text(
-        "🗺️ <b>بحث Google Maps</b>\n\nأرسل <b>نوع النشاط</b> (مثال: مطاعم، صيدلية، عسل):",
+    if update.callback_query:
+        await update.callback_query.answer()
+    await update.effective_message.reply_text(
+        "🗺️ <b>بحث Google Maps</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "<b>الخطوة 1 من 3</b> — أرسل نوع النشاط\n"
+        "<i>مثال: مطاعم، صيدلية، عسل</i>\n\n"
+        "/cancel للإلغاء",
         parse_mode=ParseMode.HTML,
     )
     return GM_CATEGORY
 
 async def gmaps_category(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     ctx.user_data["gm_category"] = update.message.text.strip()
-    await update.message.reply_text("🏙️ أرسل اسم <b>المدينة</b>:", parse_mode=ParseMode.HTML)
+    await update.message.reply_text(
+        "<b>الخطوة 2 من 3</b> — 🏙️ أرسل اسم المدينة:", parse_mode=ParseMode.HTML
+    )
     return GM_CITY
 
 async def gmaps_city(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -868,8 +881,13 @@ async def gmaps_city(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         [InlineKeyboardButton(name, callback_data=f"gc:{code}") for code, name in COUNTRIES[i:i+3]]
         for i in range(0, len(COUNTRIES), 3)
     ]
-    await update.message.reply_text("🌍 اختر الدولة:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        "<b>الخطوة 3 من 3</b> — 🌍 اختر الدولة:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(kb),
+    )
     return GM_COUNTRY
+
 
 async def gmaps_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     q = update.callback_query
