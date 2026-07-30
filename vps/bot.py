@@ -142,22 +142,7 @@ async def is_allowed(user_id: int) -> bool:
 
 # ---------------- Phone extraction (adapted from user's script) ----------------
 
-PHONE_REGEX = re.compile(r"(?:(?:00|\+)?[\s\-]?)?(\d[\d\s\-]{7,20}\d)")
-
-def extract_phones_from_text(text: str, country_dial: Optional[str] = None) -> list[str]:
-    """Extract phone-like sequences and normalize."""
-    if not text:
-        return []
-    out = set()
-    for m in PHONE_REGEX.findall(text):
-        digits = re.sub(r"[^\d]", "", m)
-        if len(digits) < 8 or len(digits) > 15:
-            continue
-        # Strip country-dial prefix so all numbers for the same country compare equal
-        if country_dial and digits.startswith(country_dial):
-            digits = "0" + digits[len(country_dial):]
-        out.add(digits)
-    return list(out)
+# NOTE: extract_phones_from_text is defined further below (country-aware version).
 
 DIAL_BY_COUNTRY = {
     "DZ": "213", "MA": "212", "TN": "216", "EG": "20", "SA": "966",
