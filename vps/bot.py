@@ -74,7 +74,10 @@ def api(method: str, path: str, **kwargs) -> Any:
         raise RuntimeError(f"{method} {path} → {r.status_code}: {r.text[:300]}")
     return r.json() if r.text else {}
 
-def log_job(search_id: str, level: str, message: str, meta: Optional[dict] = None) -> None:
+def log_job(search_id: Optional[str], level: str, message: str, meta: Optional[dict] = None) -> None:
+    if not search_id:
+        log.info("[%s] %s", level, message)
+        return
     try:
         api("POST", "/api/public/bot/logs",
             json={"search_id": search_id, "level": level, "message": message, "meta": meta})
@@ -278,7 +281,7 @@ def extract_phones_from_text(text: str, country: str) -> list[str]:
             out.add(norm)
     return list(out)
 
-def call_actor_with_rotation(actor: str, run_input: dict, search_id: str,
+def call_actor_with_rotation(actor: str, run_input: dict, search_id: Optional[str] = None,
                              timeout_secs: int = 900,
                              progress_cb=None) -> list:
     """Run an Apify actor, rotating keys on quota/auth errors.
@@ -1128,6 +1131,17 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("keys", keys_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CommandHandler("validate", validate_cmd))
+
+    # ---- Universal Apify Actor Hub (additive, does not touch existing flows) ----
+    actor_hub.init(
+        api=api,
+        call_actor=call_actor_with_rotation,
+        get_active_key=get_active_key,
+        is_allowed=is_allowed,
+        countries=COUNTRIES,
+        cancel_cmd=cancel_cmd,
+    )
+    actor_hub.register(app)
     return app
 
 def main() -> None:
