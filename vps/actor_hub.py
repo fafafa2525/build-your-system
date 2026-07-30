@@ -23,7 +23,7 @@ import logging
 import re
 import time
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any
 
 from apify_client import ApifyClient
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
