@@ -713,6 +713,7 @@ MENU_TEXT = (
     "• Google Maps — أنشطة محلية\n"
     "• Apify Hub — أي مصدر آخر\n\n"
     "<b>✅ الجودة</b> — فحص أرقام واتساب\n"
+    "<b>⚙️ منصة Apify</b> — أدوات، تشغيلات، رصيد، بيانات\n"
     "<b>🔑 المفاتيح</b> — إدارة مفاتيح Apify"
 )
 
@@ -1230,6 +1231,7 @@ async def post_init(app: Application) -> None:
             BotCommand("search", "بحث إعلانات فيسبوك"),
             BotCommand("gmaps", "بحث Google Maps"),
             BotCommand("validate", "فحص أرقام واتساب"),
+            BotCommand("apify", "⚙️ منصة Apify"),
             BotCommand("actor", "Apify Actor Hub"),
             BotCommand("myactors", "actors حسابي"),
             BotCommand("lastrun", "آخر تشغيل"),
