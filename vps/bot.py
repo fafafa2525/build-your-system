@@ -297,7 +297,7 @@ def call_actor_with_rotation(actor: str, run_input: dict, search_id: Optional[st
             while _time.time() < deadline:
                 info = client.run(run_id).get()
                 status = info.get("status", "")
-                stats = info.get("stats") or {}
+                # cheap item count via dataset info
                 # cheap item count via dataset info
                 ds_info = client.dataset(dataset_id).get() or {}
                 item_count = ds_info.get("itemCount", 0)
