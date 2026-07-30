@@ -373,8 +373,8 @@ def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: s
     pages_input = {
         "startUrls": [{"url": u} for u in page_urls],
         "scrapeAbout": True,
-        "maxResults": len(page_urls),
     }
+
 
     def pages_cb(status, n):
         if progress_cb:
