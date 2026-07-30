@@ -909,11 +909,15 @@ async def gmaps_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     })
     _ = resp.get("job", {})
     await q.edit_message_text(
-        f"✅ تم إنشاء مهمة Google Maps\n\n"
-        f"🏷️ <b>{category}</b>\n"
-        f"🏙️ {city} — 🌍 {country}\n\n"
-        f"سأرسل النتائج فور اكتمال البحث...",
+        f"✅ <b>تم إنشاء مهمة Google Maps</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏷️ النشاط: <b>{category}</b>\n"
+        f"🏙️ المدينة: {city}\n"
+        f"🌍 الدولة: {country}\n"
+        f"⏳ الحالة: قيد التنفيذ…\n\n"
+        f"سأرسل النتائج فور اكتمال البحث.",
         parse_mode=ParseMode.HTML,
+        reply_markup=back_kb(),
     )
     return ConversationHandler.END
 
@@ -922,10 +926,10 @@ async def gmaps_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 # /addkey
 async def addkey_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return
     if not ctx.args:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "الاستخدام:\n<code>/addkey apify_api_XXXXXXXX [الاسم]</code>",
             parse_mode=ParseMode.HTML,
         )
@@ -934,30 +938,43 @@ async def addkey_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     label = " ".join(ctx.args[1:]).strip() or None
     try:
         api("POST", "/api/public/bot/keys", json={"api_key": api_key, "label": label})
-        await update.message.reply_text("✅ تمت إضافة المفتاح")
+        await update.effective_message.reply_text("✅ تمت إضافة المفتاح", reply_markup=back_kb())
     except Exception as e:
-        await update.message.reply_text(f"❌ {e}")
+        await update.effective_message.reply_text(f"❌ {e}")
 
 # /keys
 async def keys_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return
     data = api("GET", "/api/public/bot/keys")
     keys = data.get("keys") or []
     if not keys:
-        await update.message.reply_text("لا توجد مفاتيح نشطة. أضف واحداً بـ /addkey")
+        await update.effective_message.reply_text(
+            "🔑 لا توجد مفاتيح نشطة.\nأضف واحداً:\n<code>/addkey apify_api_XXXX الاسم</code>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=back_kb(),
+        )
         return
-    lines = [f"🔑 <b>المفاتيح النشطة: {len(keys)}</b>\n"]
+    lines = [f"🔑 <b>المفاتيح النشطة: {len(keys)}</b>", "━━━━━━━━━━━━━━━━━━━━"]
     for k in keys:
         lines.append(f"• <b>{k['label']}</b> — {k['usage_count']} استخدام")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    lines.append("\nلإضافة مفتاح: <code>/addkey apify_api_XXXX الاسم</code>")
+    await update.effective_message.reply_text(
+        "\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=back_kb()
+    )
 
 async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return
-    await update.message.reply_text("افتح لوحة التحكم على الويب لعرض الإحصائيات الكاملة.")
+    await update.effective_message.reply_text(
+        "📈 <b>الإحصائيات</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+        "افتح لوحة التحكم على الويب لعرض الإحصائيات الكاملة والعملاء والتصدير.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=back_kb(),
+    )
+
 
 # ---------------- Contact Validation Engine (WhatsApp validator) ----------------
 
