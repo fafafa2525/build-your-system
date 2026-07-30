@@ -24,7 +24,13 @@ from apify_client import ApifyClient
 from dotenv import load_dotenv
 
 import actor_hub
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    MenuButtonCommands,
+    Update,
+)
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -1211,13 +1217,32 @@ async def post_init(app: Application) -> None:
     heartbeat("telegram_bot", "online")
     asyncio.create_task(worker_loop(app))
     asyncio.create_task(heartbeat_loop())
+    try:
+        await app.bot.set_my_commands([
+            BotCommand("start", "القائمة الرئيسية"),
+            BotCommand("search", "بحث إعلانات فيسبوك"),
+            BotCommand("gmaps", "بحث Google Maps"),
+            BotCommand("validate", "فحص أرقام واتساب"),
+            BotCommand("actor", "Apify Actor Hub"),
+            BotCommand("myactors", "actors حسابي"),
+            BotCommand("lastrun", "آخر تشغيل"),
+            BotCommand("keys", "المفاتيح"),
+            BotCommand("addkey", "إضافة مفتاح"),
+            BotCommand("stats", "الإحصائيات"),
+            BotCommand("help", "المساعدة"),
+            BotCommand("cancel", "إلغاء العملية"),
+        ])
+        await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    except Exception as e:
+        log.warning("set_my_commands failed: %s", e)
     log.info("Bot ready — worker + heartbeat running")
 
 def build_app() -> Application:
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     conv = ConversationHandler(
-        entry_points=[CommandHandler("search", search_start)],
+        entry_points=[CommandHandler("search", search_start),
+                      CallbackQueryHandler(search_start, pattern=r"^m:search$")],
         states={
             CHOOSE_KEYWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_keyword)],
             CHOOSE_COUNTRY: [CallbackQueryHandler(search_country, pattern=r"^c:")],
@@ -1227,7 +1252,8 @@ def build_app() -> Application:
     )
 
     gmaps_conv = ConversationHandler(
-        entry_points=[CommandHandler("gmaps", gmaps_start)],
+        entry_points=[CommandHandler("gmaps", gmaps_start),
+                      CallbackQueryHandler(gmaps_start, pattern=r"^m:gmaps$")],
         states={
             GM_CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, gmaps_category)],
             GM_CITY:     [MessageHandler(filters.TEXT & ~filters.COMMAND, gmaps_city)],
@@ -1246,6 +1272,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("keys", keys_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CommandHandler("validate", validate_cmd))
+    app.add_handler(CallbackQueryHandler(menu_cb, pattern=r"^m:"))
 
     # ---- Universal Apify Actor Hub (additive, does not touch existing flows) ----
     actor_hub.init(
