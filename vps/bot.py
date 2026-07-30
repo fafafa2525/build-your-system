@@ -24,6 +24,7 @@ from apify_client import ApifyClient
 from dotenv import load_dotenv
 
 import actor_hub
+import apify_platform
 from telegram import (
     BotCommand,
     InlineKeyboardButton,
@@ -712,6 +713,7 @@ MENU_TEXT = (
     "• Google Maps — أنشطة محلية\n"
     "• Apify Hub — أي مصدر آخر\n\n"
     "<b>✅ الجودة</b> — فحص أرقام واتساب\n"
+    "<b>⚙️ منصة Apify</b> — أدوات، تشغيلات، رصيد، بيانات\n"
     "<b>🔑 المفاتيح</b> — إدارة مفاتيح Apify"
 )
 
@@ -724,6 +726,9 @@ def main_menu_kb() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("✅ فحص واتساب", callback_data="m:validate"),
             InlineKeyboardButton("🧩 Apify Hub", callback_data="m:actor"),
+        ],
+        [
+            InlineKeyboardButton("⚙️ منصة Apify", callback_data="ap:home"),
         ],
         [
             InlineKeyboardButton("🔑 المفاتيح", callback_data="m:keys"),
@@ -764,7 +769,8 @@ async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "🧩 <b>Apify Hub</b> — شغّل أي Actor من متجر Apify واحفظ نتائجه في العملاء.\n\n"
         "🔑 <b>المفاتيح</b> — عرض المفاتيح، والإضافة عبر:\n"
         "<code>/addkey apify_api_XXXX الاسم</code>\n\n"
-        "الأوامر: /search /gmaps /validate /actor /myactors /lastrun /keys /addkey /stats /cancel",
+        "⚙️ <b>منصة Apify</b> — لوحة تحكم كاملة: الأدوات، التصنيفات، المفضلة، التشغيلات الجارية، الرصيد، الاستهلاك، الداتاسِت والتخزين (/apify).\n\n"
+        "الأوامر: /apify /search /gmaps /validate /actor /myactors /lastrun /keys /addkey /stats /cancel",
         parse_mode=ParseMode.HTML,
         reply_markup=back_kb(),
     )
@@ -791,6 +797,8 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await actor_hub.myactors_cmd(update, ctx)
     elif action == "lastrun":
         await actor_hub.lastrun_cmd(update, ctx)
+    elif action == "apify":
+        await apify_platform.platform_home(update, ctx)
 
 # /search flow
 async def search_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1223,6 +1231,7 @@ async def post_init(app: Application) -> None:
             BotCommand("search", "بحث إعلانات فيسبوك"),
             BotCommand("gmaps", "بحث Google Maps"),
             BotCommand("validate", "فحص أرقام واتساب"),
+            BotCommand("apify", "⚙️ منصة Apify"),
             BotCommand("actor", "Apify Actor Hub"),
             BotCommand("myactors", "actors حسابي"),
             BotCommand("lastrun", "آخر تشغيل"),
@@ -1283,6 +1292,16 @@ def build_app() -> Application:
         cancel_cmd=cancel_cmd,
     )
     actor_hub.register(app)
+
+    # ---- Apify Platform (Layer 1): full Apify control panel ----
+    apify_platform.init(
+        api=api,
+        call_actor=call_actor_with_rotation,
+        get_active_key=get_active_key,
+        is_allowed=is_allowed,
+        countries=COUNTRIES,
+    )
+    apify_platform.register(app)
 
     # Menu buttons last so conversation entry points (m:search / m:gmaps / m:actor) win
     app.add_handler(CallbackQueryHandler(menu_cb, pattern=r"^m:"))
