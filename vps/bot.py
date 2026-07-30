@@ -22,6 +22,8 @@ from urllib.parse import urlencode
 import requests
 from apify_client import ApifyClient
 from dotenv import load_dotenv
+
+import actor_hub
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -709,6 +711,9 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "🔍 /search — بحث في مكتبة إعلانات فيسبوك\n"
         "🗺️ /gmaps — بحث في Google Maps (نشاط + مدينة)\n"
         "✅ /validate — فحص أرقام آخر بحث عبر واتساب\n"
+        "🧩 /actor — تشغيل أي Actor من Apify (بحث/متجر/معرف مباشر)\n"
+        "📦 /myactors — actors الموجودة في حسابك\n"
+        "🔁 /lastrun — إعادة عرض نتائج آخر تشغيل\n"
 
         "🔑 /addkey — إضافة مفتاح Apify\n"
         "📊 /keys — عرض حالة المفاتيح\n"
