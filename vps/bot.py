@@ -319,8 +319,23 @@ def call_actor_with_rotation(actor: str, run_input: dict, search_id: Optional[st
             return items
         except Exception as e:
             msg = str(e)
+            low = msg.lower()
             log_job(search_id, "warn", f"خطأ في {key['label']}: {msg[:200]}")
-            if any(t in msg.lower() for t in ["402", "429", "insufficient", "usage limit", "hard limit", "monthly usage", "monthly-usage", "unauthorized", "payment", "quota", "maximum charged results", "charged results must be greater"]):
+
+            # Paid/rental actors: rotating keys will not help — explain clearly.
+            if any(t in low for t in ["rent a paid actor", "free trial has expired", "must rent"]):
+                raise RuntimeError(
+                    "هذا الـ Actor مدفوع ويحتاج اشتراك/استئجار من حساب Apify. "
+                    "اختر Actor مجاني أو استأجره من حسابك ثم أعد المحاولة."
+                )
+
+            # Quota / billing / auth problems → mark key exhausted and rotate.
+            if any(t in low for t in [
+                "402", "429", "insufficient", "usage limit", "hard limit", "monthly usage",
+                "monthly-usage", "unauthorized", "invalid token", "payment", "quota",
+                "remaining usage", "exceed your remaining", "not enough credit",
+                "maximum charged results", "charged results must be greater",
+            ]):
                 api("PATCH", "/api/public/bot/keys",
                     json={"id": key["id"], "status": "exhausted", "last_error": msg[:500]})
                 key = get_active_key()
@@ -330,6 +345,7 @@ def call_actor_with_rotation(actor: str, run_input: dict, search_id: Optional[st
                 continue
             raise
     raise RuntimeError("فشل بعد استنفاد كل المفاتيح")
+
 
 def run_facebook_scrape(keyword: str, country: str, max_pages: int, search_id: str,
                         progress_cb=None) -> list[dict]:
