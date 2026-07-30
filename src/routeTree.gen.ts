@@ -24,6 +24,7 @@ import { Route as ApiPublicBotLogsRouteImport } from './routes/api/public/bot/lo
 import { Route as ApiPublicBotKeysRouteImport } from './routes/api/public/bot/keys'
 import { Route as ApiPublicBotJobsRouteImport } from './routes/api/public/bot/jobs'
 import { Route as ApiPublicBotHeartbeatRouteImport } from './routes/api/public/bot/heartbeat'
+import { Route as ApiPublicBotApifyRouteImport } from './routes/api/public/bot/apify'
 
 const UnlockRoute = UnlockRouteImport.update({
   id: '/unlock',
@@ -99,6 +100,11 @@ const ApiPublicBotHeartbeatRoute = ApiPublicBotHeartbeatRouteImport.update({
   path: '/api/public/bot/heartbeat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicBotApifyRoute = ApiPublicBotApifyRouteImport.update({
+  id: '/api/public/bot/apify',
+  path: '/api/public/bot/apify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/numbers': typeof AuthenticatedNumbersRoute
   '/searches': typeof AuthenticatedSearchesRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/bot/apify': typeof ApiPublicBotApifyRoute
   '/api/public/bot/heartbeat': typeof ApiPublicBotHeartbeatRoute
   '/api/public/bot/jobs': typeof ApiPublicBotJobsRoute
   '/api/public/bot/keys': typeof ApiPublicBotKeysRoute
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/numbers': typeof AuthenticatedNumbersRoute
   '/searches': typeof AuthenticatedSearchesRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/bot/apify': typeof ApiPublicBotApifyRoute
   '/api/public/bot/heartbeat': typeof ApiPublicBotHeartbeatRoute
   '/api/public/bot/jobs': typeof ApiPublicBotJobsRoute
   '/api/public/bot/keys': typeof ApiPublicBotKeysRoute
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   '/_authenticated/numbers': typeof AuthenticatedNumbersRoute
   '/_authenticated/searches': typeof AuthenticatedSearchesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/bot/apify': typeof ApiPublicBotApifyRoute
   '/api/public/bot/heartbeat': typeof ApiPublicBotHeartbeatRoute
   '/api/public/bot/jobs': typeof ApiPublicBotJobsRoute
   '/api/public/bot/keys': typeof ApiPublicBotKeysRoute
@@ -160,6 +169,7 @@ export interface FileRouteTypes {
     | '/numbers'
     | '/searches'
     | '/settings'
+    | '/api/public/bot/apify'
     | '/api/public/bot/heartbeat'
     | '/api/public/bot/jobs'
     | '/api/public/bot/keys'
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
     | '/numbers'
     | '/searches'
     | '/settings'
+    | '/api/public/bot/apify'
     | '/api/public/bot/heartbeat'
     | '/api/public/bot/jobs'
     | '/api/public/bot/keys'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/_authenticated/numbers'
     | '/_authenticated/searches'
     | '/_authenticated/settings'
+    | '/api/public/bot/apify'
     | '/api/public/bot/heartbeat'
     | '/api/public/bot/jobs'
     | '/api/public/bot/keys'
@@ -206,6 +218,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   UnlockRoute: typeof UnlockRoute
+  ApiPublicBotApifyRoute: typeof ApiPublicBotApifyRoute
   ApiPublicBotHeartbeatRoute: typeof ApiPublicBotHeartbeatRoute
   ApiPublicBotJobsRoute: typeof ApiPublicBotJobsRoute
   ApiPublicBotKeysRoute: typeof ApiPublicBotKeysRoute
@@ -322,6 +335,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicBotHeartbeatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/bot/apify': {
+      id: '/api/public/bot/apify'
+      path: '/api/public/bot/apify'
+      fullPath: '/api/public/bot/apify'
+      preLoaderRoute: typeof ApiPublicBotApifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -348,6 +368,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   UnlockRoute: UnlockRoute,
+  ApiPublicBotApifyRoute: ApiPublicBotApifyRoute,
   ApiPublicBotHeartbeatRoute: ApiPublicBotHeartbeatRoute,
   ApiPublicBotJobsRoute: ApiPublicBotJobsRoute,
   ApiPublicBotKeysRoute: ApiPublicBotKeysRoute,

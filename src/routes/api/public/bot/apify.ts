@@ -86,10 +86,11 @@ export const Route = createFileRoute("/api/public/bot/apify")({
         if (!resource) return jsonError("unknown resource");
         const body = (await request.json()) as Record<string, unknown>;
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const db = supabaseAdmin as any;
 
         if (resource === "actors" || resource === "favorites") {
           const conflict = resource === "actors" ? "actor_id" : "telegram_user_id,actor_id";
-          const { data, error } = await supabaseAdmin
+          const { data, error } = await db
             .from(TABLE[resource])
             .upsert(body as any, { onConflict: conflict })
             .select()
@@ -98,7 +99,7 @@ export const Route = createFileRoute("/api/public/bot/apify")({
           return json({ item: data });
         }
 
-        const { data, error } = await supabaseAdmin
+        const { data, error } = await db
           .from(TABLE[resource])
           .insert(body as any)
           .select()
@@ -117,7 +118,7 @@ export const Route = createFileRoute("/api/public/bot/apify")({
         const { id, run_id, ...patch } = body;
         if (!id && !run_id) return jsonError("id or run_id required");
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        let q = supabaseAdmin.from(TABLE[resource]).update(patch as any);
+        let q = (supabaseAdmin as any).from(TABLE[resource]).update(patch as any);
         q = id ? q.eq("id", id) : q.eq("run_id", run_id!);
         const { data, error } = await q.select().maybeSingle();
         if (error) return jsonError(error.message, 500);
@@ -134,7 +135,7 @@ export const Route = createFileRoute("/api/public/bot/apify")({
         const actorId = url.searchParams.get("actor_id");
         const uid = url.searchParams.get("telegram_user_id");
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        let q = supabaseAdmin.from(TABLE[resource]).delete();
+        let q = (supabaseAdmin as any).from(TABLE[resource]).delete();
         if (id) q = q.eq("id", id);
         else if (actorId) {
           q = q.eq("actor_id", actorId);
