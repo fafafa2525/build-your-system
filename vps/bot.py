@@ -24,7 +24,13 @@ from apify_client import ApifyClient
 from dotenv import load_dotenv
 
 import actor_hub
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    MenuButtonCommands,
+    Update,
+)
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -697,40 +703,110 @@ async def heartbeat_loop() -> None:
 
 # ---------------- Telegram handlers ----------------
 
+MENU_TEXT = (
+    "👋 <b>AdsBot — منصّة استخراج العملاء</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━\n"
+    "اختر ما تريد من الأزرار بالأسفل 👇\n\n"
+    "<b>🎯 مصادر العملاء</b>\n"
+    "• مكتبة إعلانات فيسبوك — معلنون نشطون\n"
+    "• Google Maps — أنشطة محلية\n"
+    "• Apify Hub — أي مصدر آخر\n\n"
+    "<b>✅ الجودة</b> — فحص أرقام واتساب\n"
+    "<b>🔑 المفاتيح</b> — إدارة مفاتيح Apify"
+)
+
+def main_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔍 إعلانات فيسبوك", callback_data="m:search"),
+            InlineKeyboardButton("🗺️ Google Maps", callback_data="m:gmaps"),
+        ],
+        [
+            InlineKeyboardButton("✅ فحص واتساب", callback_data="m:validate"),
+            InlineKeyboardButton("🧩 Apify Hub", callback_data="m:actor"),
+        ],
+        [
+            InlineKeyboardButton("🔑 المفاتيح", callback_data="m:keys"),
+            InlineKeyboardButton("📦 actors حسابي", callback_data="m:myactors"),
+        ],
+        [
+            InlineKeyboardButton("📈 الإحصائيات", callback_data="m:stats"),
+            InlineKeyboardButton("🔁 آخر تشغيل", callback_data="m:lastrun"),
+        ],
+        [InlineKeyboardButton("❓ المساعدة", callback_data="m:help")],
+    ])
+
+def back_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="m:home")]])
+
 async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"❌ غير مصرح لك.\n\nمعرفك: <code>{update.effective_user.id}</code>\n"
             f"أضفه من الواجهة → الإعدادات → معرفات تلجرام المسموح لها.",
             parse_mode=ParseMode.HTML,
         )
         return
-    await update.message.reply_text(
-        "👋 <b>مرحباً في AdsBot</b>\n\n"
-        "الأوامر المتاحة:\n"
-        "🔍 /search — بحث في مكتبة إعلانات فيسبوك\n"
-        "🗺️ /gmaps — بحث في Google Maps (نشاط + مدينة)\n"
-        "✅ /validate — فحص أرقام آخر بحث عبر واتساب\n"
-        "🧩 /actor — تشغيل أي Actor من Apify (بحث/متجر/معرف مباشر)\n"
-        "📦 /myactors — actors الموجودة في حسابك\n"
-        "🔁 /lastrun — إعادة عرض نتائج آخر تشغيل\n"
-
-        "🔑 /addkey — إضافة مفتاح Apify\n"
-        "📊 /keys — عرض حالة المفاتيح\n"
-        "📈 /stats — إحصائيات\n"
-        "❓ /help — المساعدة",
-        parse_mode=ParseMode.HTML,
+    await update.effective_message.reply_text(
+        MENU_TEXT, parse_mode=ParseMode.HTML, reply_markup=main_menu_kb()
     )
 
 async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    await start_cmd(update, ctx)
+    if not await is_allowed(update.effective_user.id):
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
+        return
+    await update.effective_message.reply_text(
+        "❓ <b>دليل الاستخدام</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔍 <b>إعلانات فيسبوك</b> — كلمة مفتاحية + دولة، يجلب المعلنين النشطين وأرقامهم وروابط صفحاتهم.\n\n"
+        "🗺️ <b>Google Maps</b> — نشاط + مدينة + دولة، يجلب الأنشطة مع الهاتف والإيميل والموقع.\n\n"
+        "✅ <b>فحص واتساب</b> — يتحقق من أرقام آخر بحث (نتائج محفوظة 30 يوماً).\n\n"
+        "🧩 <b>Apify Hub</b> — شغّل أي Actor من متجر Apify واحفظ نتائجه في العملاء.\n\n"
+        "🔑 <b>المفاتيح</b> — عرض المفاتيح، والإضافة عبر:\n"
+        "<code>/addkey apify_api_XXXX الاسم</code>\n\n"
+        "الأوامر: /search /gmaps /validate /actor /myactors /lastrun /keys /addkey /stats /cancel",
+        parse_mode=ParseMode.HTML,
+        reply_markup=back_kb(),
+    )
+
+async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles simple menu buttons (non-conversation entries)."""
+    q = update.callback_query
+    await q.answer()
+    if not await is_allowed(q.from_user.id):
+        await q.edit_message_text("❌ غير مصرح لك.")
+        return
+    action = q.data.split(":", 1)[1]
+    if action == "home":
+        await q.edit_message_text(MENU_TEXT, parse_mode=ParseMode.HTML, reply_markup=main_menu_kb())
+    elif action == "help":
+        await help_cmd(update, ctx)
+    elif action == "keys":
+        await keys_cmd(update, ctx)
+    elif action == "stats":
+        await stats_cmd(update, ctx)
+    elif action == "validate":
+        await validate_cmd(update, ctx)
+    elif action == "myactors":
+        await actor_hub.myactors_cmd(update, ctx)
+    elif action == "lastrun":
+        await actor_hub.lastrun_cmd(update, ctx)
 
 # /search flow
 async def search_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return ConversationHandler.END
-    await update.message.reply_text("🔎 أرسل الكلمة المفتاحية للبحث:")
+    if update.callback_query:
+        await update.callback_query.answer()
+    await update.effective_message.reply_text(
+        "🔍 <b>بحث مكتبة إعلانات فيسبوك</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "<b>الخطوة 1 من 2</b> — أرسل الكلمة المفتاحية\n"
+        "<i>مثال: مطاعم، عيادة أسنان، أثاث</i>\n\n"
+        "/cancel للإلغاء",
+        parse_mode=ParseMode.HTML,
+    )
     return CHOOSE_KEYWORD
 
 async def search_keyword(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -739,8 +815,13 @@ async def search_keyword(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         [InlineKeyboardButton(name, callback_data=f"c:{code}") for code, name in COUNTRIES[i:i+3]]
         for i in range(0, len(COUNTRIES), 3)
     ]
-    await update.message.reply_text("🌍 اختر الدولة:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        "<b>الخطوة 2 من 2</b> — 🌍 اختر الدولة:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(kb),
+    )
     return CHOOSE_COUNTRY
+
 
 
 async def search_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -759,32 +840,45 @@ async def search_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     })
     job = resp.get("job", {})
     await q.edit_message_text(
-        f"✅ تم إنشاء المهمة\n\n"
-        f"🔎 <b>{keyword}</b>\n"
-        f"🌍 {country}\n\n"
-        f"سأرسل النتائج فور اكتمال البحث...",
+        f"✅ <b>تم إنشاء المهمة</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔎 الكلمة: <b>{keyword}</b>\n"
+        f"🌍 الدولة: {country}\n"
+        f"⏳ الحالة: قيد التنفيذ…\n\n"
+        f"سأرسل النتائج فور اكتمال البحث.",
         parse_mode=ParseMode.HTML,
+        reply_markup=back_kb(),
     )
     return ConversationHandler.END
 
 async def cancel_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("تم الإلغاء")
+    await update.effective_message.reply_text(
+        "تم الإلغاء ✅", reply_markup=back_kb()
+    )
     return ConversationHandler.END
 
 # /gmaps flow — Google Maps source
 async def gmaps_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return ConversationHandler.END
-    await update.message.reply_text(
-        "🗺️ <b>بحث Google Maps</b>\n\nأرسل <b>نوع النشاط</b> (مثال: مطاعم، صيدلية، عسل):",
+    if update.callback_query:
+        await update.callback_query.answer()
+    await update.effective_message.reply_text(
+        "🗺️ <b>بحث Google Maps</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "<b>الخطوة 1 من 3</b> — أرسل نوع النشاط\n"
+        "<i>مثال: مطاعم، صيدلية، عسل</i>\n\n"
+        "/cancel للإلغاء",
         parse_mode=ParseMode.HTML,
     )
     return GM_CATEGORY
 
 async def gmaps_category(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     ctx.user_data["gm_category"] = update.message.text.strip()
-    await update.message.reply_text("🏙️ أرسل اسم <b>المدينة</b>:", parse_mode=ParseMode.HTML)
+    await update.message.reply_text(
+        "<b>الخطوة 2 من 3</b> — 🏙️ أرسل اسم المدينة:", parse_mode=ParseMode.HTML
+    )
     return GM_CITY
 
 async def gmaps_city(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -793,8 +887,13 @@ async def gmaps_city(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         [InlineKeyboardButton(name, callback_data=f"gc:{code}") for code, name in COUNTRIES[i:i+3]]
         for i in range(0, len(COUNTRIES), 3)
     ]
-    await update.message.reply_text("🌍 اختر الدولة:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        "<b>الخطوة 3 من 3</b> — 🌍 اختر الدولة:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(kb),
+    )
     return GM_COUNTRY
+
 
 async def gmaps_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     q = update.callback_query
@@ -816,11 +915,15 @@ async def gmaps_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     })
     _ = resp.get("job", {})
     await q.edit_message_text(
-        f"✅ تم إنشاء مهمة Google Maps\n\n"
-        f"🏷️ <b>{category}</b>\n"
-        f"🏙️ {city} — 🌍 {country}\n\n"
-        f"سأرسل النتائج فور اكتمال البحث...",
+        f"✅ <b>تم إنشاء مهمة Google Maps</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏷️ النشاط: <b>{category}</b>\n"
+        f"🏙️ المدينة: {city}\n"
+        f"🌍 الدولة: {country}\n"
+        f"⏳ الحالة: قيد التنفيذ…\n\n"
+        f"سأرسل النتائج فور اكتمال البحث.",
         parse_mode=ParseMode.HTML,
+        reply_markup=back_kb(),
     )
     return ConversationHandler.END
 
@@ -829,10 +932,10 @@ async def gmaps_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 # /addkey
 async def addkey_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return
     if not ctx.args:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "الاستخدام:\n<code>/addkey apify_api_XXXXXXXX [الاسم]</code>",
             parse_mode=ParseMode.HTML,
         )
@@ -841,30 +944,43 @@ async def addkey_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     label = " ".join(ctx.args[1:]).strip() or None
     try:
         api("POST", "/api/public/bot/keys", json={"api_key": api_key, "label": label})
-        await update.message.reply_text("✅ تمت إضافة المفتاح")
+        await update.effective_message.reply_text("✅ تمت إضافة المفتاح", reply_markup=back_kb())
     except Exception as e:
-        await update.message.reply_text(f"❌ {e}")
+        await update.effective_message.reply_text(f"❌ {e}")
 
 # /keys
 async def keys_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return
     data = api("GET", "/api/public/bot/keys")
     keys = data.get("keys") or []
     if not keys:
-        await update.message.reply_text("لا توجد مفاتيح نشطة. أضف واحداً بـ /addkey")
+        await update.effective_message.reply_text(
+            "🔑 لا توجد مفاتيح نشطة.\nأضف واحداً:\n<code>/addkey apify_api_XXXX الاسم</code>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=back_kb(),
+        )
         return
-    lines = [f"🔑 <b>المفاتيح النشطة: {len(keys)}</b>\n"]
+    lines = [f"🔑 <b>المفاتيح النشطة: {len(keys)}</b>", "━━━━━━━━━━━━━━━━━━━━"]
     for k in keys:
         lines.append(f"• <b>{k['label']}</b> — {k['usage_count']} استخدام")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    lines.append("\nلإضافة مفتاح: <code>/addkey apify_api_XXXX الاسم</code>")
+    await update.effective_message.reply_text(
+        "\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=back_kb()
+    )
 
 async def stats_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return
-    await update.message.reply_text("افتح لوحة التحكم على الويب لعرض الإحصائيات الكاملة.")
+    await update.effective_message.reply_text(
+        "📈 <b>الإحصائيات</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+        "افتح لوحة التحكم على الويب لعرض الإحصائيات الكاملة والعملاء والتصدير.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=back_kb(),
+    )
+
 
 # ---------------- Contact Validation Engine (WhatsApp validator) ----------------
 
@@ -1012,7 +1128,7 @@ def validate_whatsapp_batch(numbers_e164: list[str], search_id: Optional[str] = 
 async def validate_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """/validate — validate the phone numbers from the caller's most recent completed search."""
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return
     uid = update.effective_user.id
     log.info("validate_cmd: fetching numbers for telegram_user_id=%s", uid)
@@ -1022,19 +1138,19 @@ async def validate_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                    params={"telegram_user_id": uid, "limit": 500})
     except Exception as e:
         log.warning("validate_cmd: numbers fetch failed: %s", e)
-        await update.message.reply_text(f"⚠️ فشل جلب الأرقام: {e}")
+        await update.effective_message.reply_text(f"⚠️ فشل جلب الأرقام: {e}")
         return
     items = resp.get("items") or []
     log.info("validate_cmd: got %d items from /numbers endpoint", len(items))
     if not items:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"لم أجد أرقاماً حديثة لهذا الحساب (uid={uid}).\n"
             "شغّل /search أولاً وانتظر اكتماله ثم استخدم /validate.\n"
             "لو لسّا يظهر فارغ بعد بحث ناجح: انشر آخر تحديثات لوحة التحكم من زر Publish."
         )
         return
 
-    status_msg = await update.message.reply_text(
+    status_msg = await update.effective_message.reply_text(
         f"🔎 جاري التحقق من {len(items)} رقم عبر واتساب…"
     )
 
@@ -1101,13 +1217,32 @@ async def post_init(app: Application) -> None:
     heartbeat("telegram_bot", "online")
     asyncio.create_task(worker_loop(app))
     asyncio.create_task(heartbeat_loop())
+    try:
+        await app.bot.set_my_commands([
+            BotCommand("start", "القائمة الرئيسية"),
+            BotCommand("search", "بحث إعلانات فيسبوك"),
+            BotCommand("gmaps", "بحث Google Maps"),
+            BotCommand("validate", "فحص أرقام واتساب"),
+            BotCommand("actor", "Apify Actor Hub"),
+            BotCommand("myactors", "actors حسابي"),
+            BotCommand("lastrun", "آخر تشغيل"),
+            BotCommand("keys", "المفاتيح"),
+            BotCommand("addkey", "إضافة مفتاح"),
+            BotCommand("stats", "الإحصائيات"),
+            BotCommand("help", "المساعدة"),
+            BotCommand("cancel", "إلغاء العملية"),
+        ])
+        await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    except Exception as e:
+        log.warning("set_my_commands failed: %s", e)
     log.info("Bot ready — worker + heartbeat running")
 
 def build_app() -> Application:
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     conv = ConversationHandler(
-        entry_points=[CommandHandler("search", search_start)],
+        entry_points=[CommandHandler("search", search_start),
+                      CallbackQueryHandler(search_start, pattern=r"^m:search$")],
         states={
             CHOOSE_KEYWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_keyword)],
             CHOOSE_COUNTRY: [CallbackQueryHandler(search_country, pattern=r"^c:")],
@@ -1117,7 +1252,8 @@ def build_app() -> Application:
     )
 
     gmaps_conv = ConversationHandler(
-        entry_points=[CommandHandler("gmaps", gmaps_start)],
+        entry_points=[CommandHandler("gmaps", gmaps_start),
+                      CallbackQueryHandler(gmaps_start, pattern=r"^m:gmaps$")],
         states={
             GM_CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, gmaps_category)],
             GM_CITY:     [MessageHandler(filters.TEXT & ~filters.COMMAND, gmaps_city)],
@@ -1147,6 +1283,9 @@ def build_app() -> Application:
         cancel_cmd=cancel_cmd,
     )
     actor_hub.register(app)
+
+    # Menu buttons last so conversation entry points (m:search / m:gmaps / m:actor) win
+    app.add_handler(CallbackQueryHandler(menu_cb, pattern=r"^m:"))
     return app
 
 def main() -> None:
