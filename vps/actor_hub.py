@@ -219,8 +219,11 @@ async def _guard(update: Update) -> bool:
 async def actor_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     if not await _guard(update):
         return ConversationHandler.END
-    await update.message.reply_text(
-        "🧩 <b>Apify Actor Hub</b>\n\n"
+    if update.callback_query:
+        await update.callback_query.answer()
+    await update.effective_message.reply_text(
+        "🧩 <b>Apify Actor Hub</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
         "أرسل واحدة مما يلي:\n"
         "• كلمة بحث في متجر Apify (مثال: <code>instagram scraper</code>)\n"
         "• <code>mine</code> لعرض actors حسابك\n"
@@ -520,7 +523,7 @@ async def lastrun_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         return
     items = ctx.user_data.get("ah_items") or []
     if not items:
-        await update.message.reply_text("لا يوجد تشغيل سابق في هذه الجلسة. استخدم /actor")
+        await update.effective_message.reply_text("لا يوجد تشغيل سابق في هذه الجلسة. استخدم /actor")
         return
     await _send_field_menu(ctx.application, update.effective_chat.id, ctx, items,
                            ctx.user_data.get("ah_actor", "actor"))
@@ -533,18 +536,19 @@ async def myactors_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         items = await loop.run_in_executor(None, list_my_actors)
     except Exception as e:
-        await update.message.reply_text(f"❌ {str(e)[:200]}")
+        await update.effective_message.reply_text(f"❌ {str(e)[:200]}")
         return
     if not items:
-        await update.message.reply_text("لا توجد actors في حسابك. استخدم /actor للبحث في المتجر.")
+        await update.effective_message.reply_text("لا توجد actors في حسابك. استخدم /actor للبحث في المتجر.")
         return
     txt = "\n".join(f"• <code>{a['id']}</code> — {a['title']}" for a in items)
-    await update.message.reply_text(f"🧩 <b>actors حسابك:</b>\n{txt}", parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(f"🧩 <b>actors حسابك:</b>\n{txt}", parse_mode=ParseMode.HTML)
 
 
 def register(app: Application) -> None:
     conv = ConversationHandler(
-        entry_points=[CommandHandler("actor", actor_start)],
+        entry_points=[CommandHandler("actor", actor_start),
+                      CallbackQueryHandler(actor_start, pattern=r"^m:actor$")],
         states={
             AH_QUERY: [
                 CallbackQueryHandler(actor_pick, pattern=r"^ah:a:"),

@@ -1272,7 +1272,6 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("keys", keys_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CommandHandler("validate", validate_cmd))
-    app.add_handler(CallbackQueryHandler(menu_cb, pattern=r"^m:"))
 
     # ---- Universal Apify Actor Hub (additive, does not touch existing flows) ----
     actor_hub.init(
@@ -1284,6 +1283,9 @@ def build_app() -> Application:
         cancel_cmd=cancel_cmd,
     )
     actor_hub.register(app)
+
+    # Menu buttons last so conversation entry points (m:search / m:gmaps / m:actor) win
+    app.add_handler(CallbackQueryHandler(menu_cb, pattern=r"^m:"))
     return app
 
 def main() -> None:
