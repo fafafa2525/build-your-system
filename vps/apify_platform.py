@@ -85,13 +85,6 @@ def _rest(path: str) -> dict:
     return (r.json() or {}).get("data") or {}
 
 
-def reg(method: str, resource: str, **kw) -> Any:
-    """Registry API (Lovable) helper."""
-    sep = "&" if "?" in resource else "?"
-    return _D["api"](method, f"/api/public/bot/apify{sep}resource={resource}"
-                     if "?" not in resource else f"/api/public/bot/apify?resource={resource}", **kw)
-
-
 def _reg_get(resource: str, params: Optional[dict] = None) -> list[dict]:
     qs = {"resource": resource, **(params or {})}
     return _D["api"]("GET", "/api/public/bot/apify", params=qs).get("items") or []
