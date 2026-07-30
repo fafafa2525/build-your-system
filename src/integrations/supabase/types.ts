@@ -14,6 +14,81 @@ export type Database = {
   }
   public: {
     Tables: {
+      apify_actors: {
+        Row: {
+          actor_id: string
+          category: string
+          created_at: string
+          default_input: Json
+          description: string | null
+          id: string
+          is_builtin: boolean
+          is_featured: boolean
+          last_run_at: string | null
+          name: string
+          price_note: string | null
+          run_count: number
+          tags: string[]
+          updated_at: string
+        }
+        Insert: {
+          actor_id: string
+          category?: string
+          created_at?: string
+          default_input?: Json
+          description?: string | null
+          id?: string
+          is_builtin?: boolean
+          is_featured?: boolean
+          last_run_at?: string | null
+          name: string
+          price_note?: string | null
+          run_count?: number
+          tags?: string[]
+          updated_at?: string
+        }
+        Update: {
+          actor_id?: string
+          category?: string
+          created_at?: string
+          default_input?: Json
+          description?: string | null
+          id?: string
+          is_builtin?: boolean
+          is_featured?: boolean
+          last_run_at?: string | null
+          name?: string
+          price_note?: string | null
+          run_count?: number
+          tags?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      apify_favorites: {
+        Row: {
+          actor_id: string
+          created_at: string
+          id: string
+          name: string | null
+          telegram_user_id: number | null
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          telegram_user_id?: number | null
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          telegram_user_id?: number | null
+        }
+        Relationships: []
+      }
       apify_keys: {
         Row: {
           added_by: string | null
@@ -71,6 +146,96 @@ export type Database = {
           status?: Database["public"]["Enums"]["key_status"]
           updated_at?: string
           usage_count?: number
+        }
+        Relationships: []
+      }
+      apify_runs: {
+        Row: {
+          actor_id: string
+          actor_name: string | null
+          cost_usd: number | null
+          created_at: string
+          dataset_id: string | null
+          duration_seconds: number | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          input: Json | null
+          items_count: number
+          provider: string | null
+          run_id: string | null
+          started_at: string
+          status: string
+          telegram_chat_id: number | null
+          telegram_user_id: number | null
+        }
+        Insert: {
+          actor_id: string
+          actor_name?: string | null
+          cost_usd?: number | null
+          created_at?: string
+          dataset_id?: string | null
+          duration_seconds?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          input?: Json | null
+          items_count?: number
+          provider?: string | null
+          run_id?: string | null
+          started_at?: string
+          status?: string
+          telegram_chat_id?: number | null
+          telegram_user_id?: number | null
+        }
+        Update: {
+          actor_id?: string
+          actor_name?: string | null
+          cost_usd?: number | null
+          created_at?: string
+          dataset_id?: string | null
+          duration_seconds?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          input?: Json | null
+          items_count?: number
+          provider?: string | null
+          run_id?: string | null
+          started_at?: string
+          status?: string
+          telegram_chat_id?: number | null
+          telegram_user_id?: number | null
+        }
+        Relationships: []
+      }
+      apify_templates: {
+        Row: {
+          actor_id: string
+          created_at: string
+          id: string
+          input: Json
+          name: string
+          telegram_user_id: number | null
+          use_count: number
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          id?: string
+          input?: Json
+          name: string
+          telegram_user_id?: number | null
+          use_count?: number
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          id?: string
+          input?: Json
+          name?: string
+          telegram_user_id?: number | null
+          use_count?: number
         }
         Relationships: []
       }
