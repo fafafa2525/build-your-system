@@ -846,7 +846,7 @@ async def search_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         "telegram_chat_id": q.message.chat.id,
         "telegram_user_id": q.from_user.id,
     })
-    job = resp.get("job", {})
+    resp.get("job", {})
     await q.edit_message_text(
         f"✅ <b>تم إنشاء المهمة</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
