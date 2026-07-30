@@ -697,40 +697,110 @@ async def heartbeat_loop() -> None:
 
 # ---------------- Telegram handlers ----------------
 
+MENU_TEXT = (
+    "👋 <b>AdsBot — منصّة استخراج العملاء</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━\n"
+    "اختر ما تريد من الأزرار بالأسفل 👇\n\n"
+    "<b>🎯 مصادر العملاء</b>\n"
+    "• مكتبة إعلانات فيسبوك — معلنون نشطون\n"
+    "• Google Maps — أنشطة محلية\n"
+    "• Apify Hub — أي مصدر آخر\n\n"
+    "<b>✅ الجودة</b> — فحص أرقام واتساب\n"
+    "<b>🔑 المفاتيح</b> — إدارة مفاتيح Apify"
+)
+
+def main_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔍 إعلانات فيسبوك", callback_data="m:search"),
+            InlineKeyboardButton("🗺️ Google Maps", callback_data="m:gmaps"),
+        ],
+        [
+            InlineKeyboardButton("✅ فحص واتساب", callback_data="m:validate"),
+            InlineKeyboardButton("🧩 Apify Hub", callback_data="m:actor"),
+        ],
+        [
+            InlineKeyboardButton("🔑 المفاتيح", callback_data="m:keys"),
+            InlineKeyboardButton("📦 actors حسابي", callback_data="m:myactors"),
+        ],
+        [
+            InlineKeyboardButton("📈 الإحصائيات", callback_data="m:stats"),
+            InlineKeyboardButton("🔁 آخر تشغيل", callback_data="m:lastrun"),
+        ],
+        [InlineKeyboardButton("❓ المساعدة", callback_data="m:help")],
+    ])
+
+def back_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="m:home")]])
+
 async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"❌ غير مصرح لك.\n\nمعرفك: <code>{update.effective_user.id}</code>\n"
             f"أضفه من الواجهة → الإعدادات → معرفات تلجرام المسموح لها.",
             parse_mode=ParseMode.HTML,
         )
         return
-    await update.message.reply_text(
-        "👋 <b>مرحباً في AdsBot</b>\n\n"
-        "الأوامر المتاحة:\n"
-        "🔍 /search — بحث في مكتبة إعلانات فيسبوك\n"
-        "🗺️ /gmaps — بحث في Google Maps (نشاط + مدينة)\n"
-        "✅ /validate — فحص أرقام آخر بحث عبر واتساب\n"
-        "🧩 /actor — تشغيل أي Actor من Apify (بحث/متجر/معرف مباشر)\n"
-        "📦 /myactors — actors الموجودة في حسابك\n"
-        "🔁 /lastrun — إعادة عرض نتائج آخر تشغيل\n"
-
-        "🔑 /addkey — إضافة مفتاح Apify\n"
-        "📊 /keys — عرض حالة المفاتيح\n"
-        "📈 /stats — إحصائيات\n"
-        "❓ /help — المساعدة",
-        parse_mode=ParseMode.HTML,
+    await update.effective_message.reply_text(
+        MENU_TEXT, parse_mode=ParseMode.HTML, reply_markup=main_menu_kb()
     )
 
 async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    await start_cmd(update, ctx)
+    if not await is_allowed(update.effective_user.id):
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
+        return
+    await update.effective_message.reply_text(
+        "❓ <b>دليل الاستخدام</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔍 <b>إعلانات فيسبوك</b> — كلمة مفتاحية + دولة، يجلب المعلنين النشطين وأرقامهم وروابط صفحاتهم.\n\n"
+        "🗺️ <b>Google Maps</b> — نشاط + مدينة + دولة، يجلب الأنشطة مع الهاتف والإيميل والموقع.\n\n"
+        "✅ <b>فحص واتساب</b> — يتحقق من أرقام آخر بحث (نتائج محفوظة 30 يوماً).\n\n"
+        "🧩 <b>Apify Hub</b> — شغّل أي Actor من متجر Apify واحفظ نتائجه في العملاء.\n\n"
+        "🔑 <b>المفاتيح</b> — عرض المفاتيح، والإضافة عبر:\n"
+        "<code>/addkey apify_api_XXXX الاسم</code>\n\n"
+        "الأوامر: /search /gmaps /validate /actor /myactors /lastrun /keys /addkey /stats /cancel",
+        parse_mode=ParseMode.HTML,
+        reply_markup=back_kb(),
+    )
+
+async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles simple menu buttons (non-conversation entries)."""
+    q = update.callback_query
+    await q.answer()
+    if not await is_allowed(q.from_user.id):
+        await q.edit_message_text("❌ غير مصرح لك.")
+        return
+    action = q.data.split(":", 1)[1]
+    if action == "home":
+        await q.edit_message_text(MENU_TEXT, parse_mode=ParseMode.HTML, reply_markup=main_menu_kb())
+    elif action == "help":
+        await help_cmd(update, ctx)
+    elif action == "keys":
+        await keys_cmd(update, ctx)
+    elif action == "stats":
+        await stats_cmd(update, ctx)
+    elif action == "validate":
+        await validate_cmd(update, ctx)
+    elif action == "myactors":
+        await actor_hub.myactors_cmd(update, ctx)
+    elif action == "lastrun":
+        await actor_hub.lastrun_cmd(update, ctx)
 
 # /search flow
 async def search_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     if not await is_allowed(update.effective_user.id):
-        await update.message.reply_text("❌ غير مصرح لك.")
+        await update.effective_message.reply_text("❌ غير مصرح لك.")
         return ConversationHandler.END
-    await update.message.reply_text("🔎 أرسل الكلمة المفتاحية للبحث:")
+    if update.callback_query:
+        await update.callback_query.answer()
+    await update.effective_message.reply_text(
+        "🔍 <b>بحث مكتبة إعلانات فيسبوك</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "<b>الخطوة 1 من 2</b> — أرسل الكلمة المفتاحية\n"
+        "<i>مثال: مطاعم، عيادة أسنان، أثاث</i>\n\n"
+        "/cancel للإلغاء",
+        parse_mode=ParseMode.HTML,
+    )
     return CHOOSE_KEYWORD
 
 async def search_keyword(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -739,8 +809,13 @@ async def search_keyword(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         [InlineKeyboardButton(name, callback_data=f"c:{code}") for code, name in COUNTRIES[i:i+3]]
         for i in range(0, len(COUNTRIES), 3)
     ]
-    await update.message.reply_text("🌍 اختر الدولة:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        "<b>الخطوة 2 من 2</b> — 🌍 اختر الدولة:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(kb),
+    )
     return CHOOSE_COUNTRY
+
 
 
 async def search_country(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
